@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Guess The Number</title>
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+      integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" type="text/css" href="../static/styles.css" />
+  </head>
+  <body class="text-center">
+
+    <nav class="navbar navbar-dark bg-dark">
+      <a class="navbar-brand" href="#">Guess The Number</a>
+    </nav>
+    <main>
+      <h1 class="banner p-3">1.2.3.</h1>
+
+      <h2 div id="ai-text">
+        🤖 the AI has picked a number... Good luck cracking it 🕵️‍♂️!
+      </h2>
+      <form action="/" method="post">
+        <div class="form-group input-container">
+          <input
+            id="number-guess"
+            class="form-control form-control-lg"
+            type="number"
+            placeholder="What's your guess?"
+            name="number_guess"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          pys-onclick="checkNumber"
+          id="number-submit"
+          class="btn btn-lg btn-secondary"
+        >
+          Check Me
+        </button>
+      </form>
+      <form action="/reset">
+        <button
+          type="submit"
+          pys-onclick="reset"
+          id="restart-game"
+          class="btn btn-lg btn-light"
+        >
+          Restart
+        </button>
+      </form>
+      <div class='guessesContainer'>
+         {% for guess in guesses %}
+           <div class="guess {% if 'high' in guess %} red {% elif 'low' in guess %} yellow {% elif 'correct' in guess %} green {% endif %}">{{ guess }}</div>
+        {% endfor %}
+      </div>
+    </main>
+  </body>
+</html>
