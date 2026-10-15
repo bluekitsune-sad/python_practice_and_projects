@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Home{% endblock %}
+{% block content %}
+<div class="stats">
+  <div class="stat"><div class="num">{{ active }}</div><div class="lbl">Active employees</div></div>
+  <div class="stat"><div class="num">{{ ex }}</div><div class="lbl">Ex employees</div></div>
+  <div class="stat"><div class="num">{{ total_records }}</div><div class="lbl">Attendance records</div></div>
+</div>
+
+<div class="card" style="margin-top:20px">
+  <h2>Quick start</h2>
+  <ol style="line-height:1.9; font-size:15px; margin:0; padding-left:20px">
+    <li><a href="{{ url_for('employees_page') }}">Employees</a> - add people (ID like <code>emp_001</code> is automatic). Mark leavers as <b>ex</b> to keep their history, or delete them.</li>
+    <li><a href="{{ url_for('attendance_page') }}">Attendance</a> - pick employee + date (defaults to today), enter arrival time and hours. Arriving after the late time is marked <b>Late</b>.</li>
+    <li><a href="{{ url_for('export_page') }}">Export</a> - choose month + year, download CSV or XLSX. Upload it to Google Drive / Sheets as-is.</li>
+    <li><a href="{{ url_for('import_page') }}">Import JSON</a> - load a correctly formatted JSON file to bulk-update employees / attendance.</li>
+  </ol>
+</div>
+
+<div class="card">
+  <h2>Notes</h2>
+  <p style="font-size:14px; margin:6px 0">
+    No login - the app only runs on this computer while it is open. All data lives in the
+    <code>data/</code> folder as JSON files, so back those up.
+  </p>
+</div>
+{% endblock %}

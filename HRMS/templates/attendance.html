@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Attendance{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Mark attendance</h2>
+  <p class="hint" style="margin-top:0">
+    Late time is set to <b>{{ late_time }}</b> (change it in <code>data/config.json</code>).
+    Later arrival = status <b>Late</b>. Saving over an existing date updates it.
+  </p>
+
+  <form method="post">
+    <div class="row">
+      <div>
+        <label for="emp_id">Employee</label>
+        <select id="emp_id" name="emp_id" required>
+          <option value="">-- select --</option>
+          {% for emp in employees %}
+            <option value="{{ emp.id }}" {{ 'selected' if emp.id == selected_emp }}>
+              {{ emp.id }} - {{ emp.name }}{{ ' (ex)' if not emp.active }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="day">Date</label>
+        <input type="date" id="day" name="day" value="{{ selected_day }}" required>
+      </div>
+      <div>
+        <label for="arrival">Arrival time</label>
+        <input type="time" id="arrival" name="arrival">
+      </div>
+      <div>
+        <label for="hours">Hours worked</label>
+        <input type="number" id="hours" name="hours" min="0" max="24" step="0.25" placeholder="e.g. 8">
+      </div>
+    </div>
+
+    <div id="existing" class="warnbox"></div>
+
+    <div style="display:flex; align-items:center; gap:16px; margin-top:14px">
+      <label style="margin:0; display:flex; align-items:center; gap:6px; font-size:14px; color:var(--ink)">
+        <input type="checkbox" id="absent" name="absent" style="width:auto"> Mark absent (no arrival / 0 hours)
+      </label>
+      <button type="submit">Save attendance</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>How it works</h2>
+  <ul style="font-size:14px; line-height:1.8; margin:0; padding-left:20px">
+    <li>Date defaults to today - change it to back-fill a past day. You will see a warning if that day already has data.</li>
+    <li>Status is automatic: <b>Present</b> (arrival up to {{ late_time }}), <b>Late</b> (after it), or <b>Absent</b> if you tick the box.</li>
+    <li>Everyone is listed (ex employees shown with an <b>(ex)</b> tag) so you can back-fill their last days; ex employees keep their records and still appear in exports.</li>
+  </ul>
+</div>
+
+<script>
+const empSel = document.getElementById('emp_id');
+const dayInput = document.getElementById('day');
+const arrivalInput = document.getElementById('arrival');
+const hoursInput = document.getElementById('hours');
+const absentBox = document.getElementById('absent');
+const existingBox = document.getElementById('existing');
+
+async function checkExisting() {
+  const emp = empSel.value, day = dayInput.value;
+  existingBox.style.display = 'none';
+  existingBox.textContent = '';
+  if (!emp || !day) return;
+  try {
+    const res = await fetch(`/api/attendance?emp_id=${encodeURIComponent(emp)}&date=${encodeURIComponent(day)}`);
+    const data = await res.json();
+    if (data.found) {
+      const r = data.record;
+      existingBox.style.display = 'block';
+      existingBox.textContent = `Already has data for ${emp} on ${day}: ${r.status}` +
+        (r.arrival ? `, arrival ${r.arrival}` : '') + `, ${r.hours} h - saving will update it.`;
+      arrivalInput.value = r.arrival || '';
+      hoursInput.value = r.hours || '';
+      absentBox.checked = r.status === 'Absent';
+    }
+  } catch (e) { /* server not reachable; ignore */ }
+}
+empSel.addEventListener('change', checkExisting);
+dayInput.addEventListener('change', checkExisting);
+if (empSel.value) checkExisting();
+</script>
+{% endblock %}

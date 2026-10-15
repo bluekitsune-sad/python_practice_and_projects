@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}HRMS{% endblock %}</title>
+<style>
+  :root { --line:#e3e7ee; --ink:#1d2733; --muted:#68758a; --accent:#1f4e78; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Segoe UI, system-ui, -apple-system, sans-serif; color:var(--ink); background:#f4f6fa; }
+  header { background:var(--accent); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:28px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:20px; letter-spacing:.5px; }
+  nav a { color:#dfe9f5; text-decoration:none; margin-right:18px; font-size:15px; padding-bottom:4px; }
+  nav a:hover, nav a.active { color:#fff; border-bottom:2px solid #fff; }
+  main { max-width:1000px; margin:24px auto; padding:0 16px 48px; }
+  .flash { padding:10px 14px; border-radius:6px; margin:10px 0; font-size:14px; }
+  .flash.ok { background:#e4f4e6; color:#1d6b2d; border:1px solid #bfe3c5; }
+  .flash.error { background:#fdeaea; color:#a12626; border:1px solid #f3c2c2; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:20px; }
+  .card h2 { margin:0 0 14px; font-size:17px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
+  input[type=text], input[type=date], input[type=time], input[type=number], input[type=file], select {
+    width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:14px; background:#fff;
+  }
+  .row { display:flex; gap:14px; flex-wrap:wrap; }
+  .row > div { flex:1; min-width:160px; }
+  button, .btn { display:inline-block; background:var(--accent); color:#fff; border:none; border-radius:6px;
+    padding:9px 18px; font-size:14px; cursor:pointer; text-decoration:none; }
+  button:hover, .btn:hover { filter:brightness(1.12); }
+  button.small, .btn.small { padding:4px 10px; font-size:12px; }
+  button.danger { background:#b23b3b; }
+  button.ghost { background:#eef2f8; color:var(--accent); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); }
+  th, td { padding:9px 10px; border-bottom:1px solid var(--line); }
+  tr:nth-child(even) td { background:#fafbfd; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+  .badge.active { background:#e4f4e6; color:#1d6b2b; }
+  .badge.ex { background:#eceff4; color:#5b6879; }
+  .badge.Present { background:#e2efda; color:#2c6e3f; }
+  .badge.Late { background:#fff2cc; color:#8a6d00; }
+  .badge.Absent { background:#fdeaea; color:#a12626; }
+  .stats { display:flex; gap:16px; flex-wrap:wrap; }
+  .stat { flex:1; min-width:150px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px; }
+  .stat .num { font-size:30px; font-weight:700; color:var(--accent); }
+  .stat .lbl { font-size:13px; color:var(--muted); }
+  .warnbox { background:#fff7e0; border:1px solid #f2dfa3; color:#7a5b00; border-radius:6px;
+    padding:10px 14px; font-size:14px; margin:12px 0; display:none; }
+  .hint { font-size:13px; color:var(--muted); margin-top:10px; }
+  pre { background:#0f172a; color:#dbe7f5; padding:14px; border-radius:8px; font-size:13px; overflow-x:auto; }
+  code { background:#eef2f8; padding:1px 5px; border-radius:4px; font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>HRMS</h1>
+  <nav>
+    <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">Home</a>
+    <a href="{{ url_for('employees_page') }}" class="{{ 'active' if request.endpoint == 'employees_page' }}">Employees</a>
+    <a href="{{ url_for('attendance_page') }}" class="{{ 'active' if request.endpoint == 'attendance_page' }}">Attendance</a>
+    <a href="{{ url_for('export_page') }}" class="{{ 'active' if request.endpoint in ('export_page', 'export_download') }}">Export</a>
+    <a href="{{ url_for('import_page') }}" class="{{ 'active' if request.endpoint == 'import_page' }}">Import JSON</a>
+  </nav>
+</header>
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

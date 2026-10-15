@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Export{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Export monthly attendance</h2>
+  <form method="get" action="{{ url_for('export_page') }}" id="previewForm">
+    <div class="row">
+      <div>
+        <label for="month">Month</label>
+        <select id="month" name="month">
+          {% for name in months %}
+            <option value="{{ loop.index }}" {{ 'selected' if loop.index == month }}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="year">Year</label>
+        <input type="number" id="year" name="year" value="{{ year }}" min="2000" max="2100">
+      </div>
+      <div style="flex:0 0 auto; display:flex; align-items:flex-end">
+        <button type="submit" class="ghost" style="background:#eef2f8">Show count</button>
+      </div>
+    </div>
+    <p class="hint" id="countLine">{{ count }} attendance record(s) in {{ months[month - 1] }} {{ year }}.</p>
+  </form>
+
+  <form method="get" action="{{ url_for('export_download') }}" id="dlForm">
+    <input type="hidden" name="month" id="dlMonth">
+    <input type="hidden" name="year" id="dlYear">
+    <div class="row" style="align-items:flex-end">
+      <div>
+        <label for="fmt">Format</label>
+        <select id="fmt" name="format">
+          <option value="csv">CSV (.csv)</option>
+          <option value="xlsx">Excel (.xlsx)</option>
+        </select>
+      </div>
+      <div style="flex:0 0 auto; display:flex; gap:10px">
+        <button type="submit">Download CSV</button>
+        <button type="button" onclick="pick('xlsx')">Download XLSX</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Google Sheets tip</h2>
+  <p style="font-size:14px; margin:6px 0">
+    Both formats open cleanly in Google Sheets: upload the file to Google Drive, then
+    <b>Open with &gt; Google Sheets</b>. The CSV is saved as UTF-8 (with BOM) and comma separated,
+    and the XLSX has no locale-specific date tricks (dates are plain <code>YYYY-MM-DD</code> text),
+    so nothing gets garbled or turned into serial numbers.
+  </p>
+</div>
+
+<script>
+const previewForm = document.getElementById('previewForm');
+const dlMonth = document.getElementById('dlMonth');
+const dlYear = document.getElementById('dlYear');
+function sync() {
+  dlMonth.value = previewForm.month.value;
+  dlYear.value = previewForm.year.value;
+}
+function pick(fmt) {
+  sync();
+  document.getElementById('fmt').value = fmt;
+  document.getElementById('dlForm').submit();
+}
+document.querySelector('#dlForm button[type=submit]').addEventListener('click', sync);
+previewForm.addEventListener('change', () => previewForm.submit());
+</script>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Employees{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Add employee</h2>
+  <form method="post">
+    <div class="row">
+      <div>
+        <label for="name">Name *</label>
+        <input type="text" id="name" name="name" required placeholder="e.g. Ali Khan">
+      </div>
+      <div>
+        <label for="department">Department (optional)</label>
+        <input type="text" id="department" name="department" placeholder="e.g. Operations">
+      </div>
+      <div>
+        <label for="designation">Designation (optional)</label>
+        <input type="text" id="designation" name="designation" placeholder="e.g. Supervisor">
+      </div>
+      <div style="flex:0 0 auto; display:flex; align-items:flex-end">
+        <button type="submit">Add employee</button>
+      </div>
+    </div>
+    <p class="hint">The ID (<code>emp_001</code> style) is generated automatically.</p>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Employees ({{ employees|length }})</h2>
+  {% if employees %}
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Name</th><th>Department</th><th>Designation</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for emp in employees %}
+      <tr>
+        <td><code>{{ emp.id }}</code></td>
+        <td>{{ emp.name }}</td>
+        <td>{{ emp.department or '-' }}</td>
+        <td>{{ emp.designation or '-' }}</td>
+        <td>
+          {% if emp.active %}
+            <span class="badge active">Active</span>
+          {% else %}
+            <span class="badge ex">Ex employee</span>
+          {% endif %}
+        </td>
+        <td style="text-align:right; white-space:nowrap">
+          <form method="post" action="{{ url_for('employee_toggle', emp_id=emp.id) }}" style="display:inline">
+            <button class="small ghost" type="submit">{{ 'Mark ex' if emp.active else 'Mark active' }}</button>
+          </form>
+          <form method="post" action="{{ url_for('employee_delete', emp_id=emp.id) }}" style="display:inline"
+                onsubmit="return confirm('Delete {{ emp.id }} permanently?\\nTheir attendance records will be deleted too.\\n(Use Mark ex to keep history instead.)')">
+            <button class="small danger" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint">No employees yet - add the first one above.</p>
+  {% endif %}
+</div>
+{% endblock %}

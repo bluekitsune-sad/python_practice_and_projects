@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Import JSON{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Import a JSON file</h2>
+  <p style="font-size:14px; margin-top:0">
+    Uploading a correctly formatted JSON file updates the web data: existing records are
+    updated, new ones are added. Nothing is deleted.
+  </p>
+  <form method="post" enctype="multipart/form-data">
+    <div class="row">
+      <div>
+        <label for="file">JSON file</label>
+        <input type="file" id="file" name="file" accept=".json,application/json" required>
+      </div>
+      <div style="flex:0 0 auto; display:flex; align-items:flex-end">
+        <button type="submit">Import</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Expected format</h2>
+  <p style="font-size:14px; margin-top:0">
+    Both keys are optional - include just the part you want to update. Every field except
+    <code>name</code> can be omitted.
+  </p>
+<pre>{
+  "employees": [
+    { "id": "emp_001", "name": "Ali Khan", "department": "Operations",
+      "designation": "Supervisor", "active": true }
+  ],
+  "attendance": {
+    "emp_001": {
+      "2026-10-01": { "arrival": "09:00", "hours": 8, "status": "Present" },
+      "2026-10-02": { "arrival": "22:30", "hours": 8, "status": "Late" },
+      "2026-10-03": { "arrival": "",      "hours": 0, "status": "Absent" }
+    }
+  }
+}</pre>
+  <p class="hint">
+    Notes: an employee without an <code>id</code> gets the next free one. A missing/unknown
+    <code>status</code> is recomputed from <code>arrival</code> vs the late time.
+    <code>status</code> must be Present, Late or Absent.
+  </p>
+</div>
+{% endblock %}
