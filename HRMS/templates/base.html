@@ -83,8 +83,8 @@
   button.small, .btn.small { padding:5px 12px; font-size:12px; border-radius:8px; }
   button.danger { background:rgba(255,115,102,.14); color:#FF9E93; border:1px solid rgba(255,115,102,.45); }
   button.danger:hover { background:var(--coral); color:var(--accent-ink); box-shadow:0 4px 16px rgba(255,115,102,.3); }
-  button.ghost { background:rgba(234,255,210,.06); color:var(--ink); border:1px solid var(--line); }
-  button.ghost:hover { border-color:var(--accent); color:var(--accent); box-shadow:none; }
+  button.ghost, .btn.ghost { background:rgba(234,255,210,.06); color:var(--ink); border:1px solid var(--line); }
+  button.ghost:hover, .btn.ghost:hover { border-color:var(--accent); color:var(--accent); box-shadow:none; }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); font-weight:600; }
   th, td { padding:11px 10px; border-bottom:1px solid var(--line); }
@@ -132,10 +132,11 @@
     <a href="{{ url_for('employees_page') }}" class="{{ 'active' if request.endpoint == 'employees_page' }}">Employees</a>
     <a href="{{ url_for('attendance_page') }}" class="{{ 'active' if request.endpoint == 'attendance_page' }}">Attendance</a>
     <a href="{{ url_for('transactions_page') }}" class="{{ 'active' if request.endpoint in ('transactions_page', 'transaction_delete') }}">Transactions</a>
-    <a href="{{ url_for('calendar_page') }}" class="{{ 'active' if request.endpoint == 'calendar_page' }}">Calendar</a>
+    <a href="{{ url_for('calendar_page') }}" class="{{ 'active' if request.endpoint in ('calendar_page', 'day_page') }}">Calendar</a>
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Totals</a>
     <a href="{{ url_for('export_page') }}" class="{{ 'active' if request.endpoint in ('export_page', 'export_download') }}">Export</a>
     <a href="{{ url_for('import_page') }}" class="{{ 'active' if request.endpoint == 'import_page' }}">Import</a>
+    <a href="{{ url_for('settings_page') }}" class="{{ 'active' if request.endpoint == 'settings_page' }}">Settings</a>
   </nav>
 </header>
 <main>

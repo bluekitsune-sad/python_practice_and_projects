@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}HRMS - {{ heading }}{% endblock %}
+{% block head %}
+<style>
+  .day-top { display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; }
+  .day-nav { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .day-nav a {
+    text-decoration:none; font-size:13px; font-weight:600; padding:7px 14px;
+    border-radius:999px; color:var(--ink); border:1px solid var(--line);
+    background:rgba(234,255,210,.05); transition:.15s;
+  }
+  .day-nav a:hover { border-color:var(--accent); color:var(--accent); }
+  .day-title { font-size:25px; font-weight:700; letter-spacing:-.5px; margin:0; }
+  .chips { display:flex; gap:12px; margin-left:auto; flex-wrap:wrap; }
+  .chip { background:#171A14; border:1px solid var(--line); border-radius:14px; padding:12px 18px; min-width:130px; }
+  .chip .c-lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  .chip .c-val { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; margin-top:3px;
+                 letter-spacing:-.4px; color:var(--accent); }
+  tr.total-row td {
+    border-top:2px solid rgba(159,220,86,.55); background:rgba(159,220,86,.07); font-weight:700;
+  }
+  td.txn { font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
+  th.txn { text-align:right; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="day-top">
+  <div>
+    <div class="day-nav">
+      <a href="{{ url_for('day_page', day=prev_iso) }}">&#8249; {{ prev_short }}</a>
+      <a href="{{ url_for('calendar_page', month=day.month, year=day.year) }}">Month view</a>
+      <a href="{{ url_for('day_page', day=next_iso) }}">{{ next_short }} &#8250;</a>
+    </div>
+    <h1 class="day-title">{{ heading }}</h1>
+  </div>
+  <div class="chips">
+    <div class="chip">
+      <div class="c-lbl">Transactions</div>
+      <div class="c-val" id="day-count">{{ txns|length }}</div>
+    </div>
+    <div class="chip">
+      <div class="c-lbl">Total amount</div>
+      <div class="c-val" id="day-total">{{ "{:,.2f}".format(total_amount) }}</div>
+    </div>
+  </div>
+</div>
+
+{% if is_future %}
+  <div class="warnbox" style="display:block">This date is in the future - nothing to mark yet.</div>
+{% endif %}
+{% if is_off %}
+  <div class="warnbox" style="display:block">Off day ({{ day.strftime('%A') }}) - attendance is not expected.</div>
+{% endif %}
+
+<div class="card">
+  <h2>Attendance ({{ rows|length }})</h2>
+  {% if rows %}
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>Name</th><th>Department</th><th>Status</th>
+        <th>Arrival</th><th>Hours</th><th class="txn">Transactions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><code>{{ r.emp.id }}</code></td>
+        <td>{{ r.emp.name }}{% if not r.emp.active %} <span class="badge ex">ex</span>{% endif %}</td>
+        <td>{{ r.emp.get('department', '') or '—' }}</td>
+        <td>
+          {% if r.rec %}<span class="badge {{ r.rec.get('status', '') }}">{{ r.rec.get('status', '—') }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>{{ r.rec.get('arrival', '') if r.rec and r.rec.get('arrival') else '—' }}</td>
+        <td>{{ r.rec.get('hours', 0) if r.rec and r.rec.get('hours') else '—' }}</td>
+        <td class="txn">
+          {% if r.count %}{{ r.count }} txn{{ 's' if r.count != 1 }} · {{ "{:,.2f}".format(r.amount) }}
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="total-row">
+        <td colspan="6">Day total - {{ txns|length }} transaction{{ 's' if txns|length != 1 }} (all names)</td>
+        <td class="txn">{{ "{:,.2f}".format(total_amount) }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint">Nobody to show for this date - add employees, or mark a day on the Attendance page.</p>
+  {% endif %}
+
+  {% if unmatched %}
+  <p class="hint">
+    {{ unmatched|length }} transaction{{ 's' if unmatched|length != 1 }} totalling
+    {{ "{:,.2f}".format(unmatched_amount) }} are recorded under name{{ 's' if unmatched|length != 1 }}
+    not in the employee list: {{ unmatched|map(attribute='name')|join(', ') }}.
+    They are included in the day total above.
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

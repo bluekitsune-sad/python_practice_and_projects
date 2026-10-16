@@ -324,6 +324,89 @@ def main() -> int:
     check("empty month chips (dash + zero)",
           'id="cal-att">—<' in body and 'id="cal-total">0.00<' in body)
 
+    # calendar day detail ---------------------------------------------------
+    resp = client.get("/calendar/2026-10-14")
+    body = resp.data.decode("utf-8")
+    check("day detail -> 200 + heading", resp.status_code == 200 and "14 October 2026" in body)
+    check("day detail: attendance row + status badge",
+          "<code>emp_001</code>" in body and 'class="badge Absent"' in body)
+    check("day detail: chips show count + amount",
+          'id="day-count">1<' in body and 'id="day-total">1,500.50<' in body)
+    check("day detail: footer covers ALL of the day's transactions",
+          "Day total - 1 transaction (all names)" in body
+          and "not in the employee list" in body)
+    body = client.get("/calendar/2026-10-15").data.decode("utf-8")
+    check("day detail: another day's amount", 'id="day-total">49.50<' in body)
+    resp = client.get("/calendar/not-a-date", follow_redirects=True)
+    check("bad day URL redirects with error",
+          resp.status_code == 200 and "Invalid date" in resp.data.decode("utf-8"))
+    body = client.get("/calendar/2026-10-10").data.decode("utf-8")
+    check("off day banner", "Off day (Saturday)" in body)
+    body = client.get("/calendar/2026-10-20").data.decode("utf-8")
+    check("future date banner", "in the future" in body)
+    body = client.get("/calendar?month=10&year=2026").data.decode("utf-8")
+    check("calendar day cells link to the day view",
+          'href="/calendar/2026-10-14"' in body)
+
+    # employee edit ---------------------------------------------------------
+    resp = client.get("/employees/emp_001/edit")
+    body = resp.data.decode("utf-8")
+    check("edit form -> 200 + prefilled name",
+          resp.status_code == 200 and 'value="Ali Khan"' in body)
+    body = client.post("/employees/emp_001/edit", data={
+        "name": "Ali R. Khan", "department": "Ops", "designation": "Lead",
+        "added_on": "2026-10-01",
+    }, follow_redirects=True).data.decode("utf-8")
+    emp1 = [e for e in json.loads((tmp / "employees.json").read_text("utf-8"))["employees"]
+            if e["id"] == "emp_001"][0]
+    check("edit saves all fields (id + join date kept)",
+          "Updated emp_001" in body and emp1["name"] == "Ali R. Khan"
+          and emp1["department"] == "Ops" and emp1["designation"] == "Lead"
+          and emp1["added_on"] == "2026-10-01", str(emp1))
+    body = client.post("/employees/emp_001/edit", data={"name": ""},
+                       follow_redirects=True).data.decode("utf-8")
+    check("edit keeps name required", "Name is required" in body)
+    body = client.post("/employees/emp_001/edit",
+                       data={"name": "Ok", "added_on": "16-10-2026"},
+                       follow_redirects=True).data.decode("utf-8")
+    check("edit rejects bad join date", "Join date must be a valid date" in body)
+    body = client.post("/employees/emp_999/edit", data={"name": "X"},
+                       follow_redirects=True).data.decode("utf-8")
+    check("edit of unknown employee", "not found" in body)
+
+    # settings: late time + off days edited from the web --------------------
+    resp = client.get("/settings")
+    body = resp.data.decode("utf-8")
+    check("GET /settings -> 200", resp.status_code == 200)
+    check("settings shows current values",
+          'value="22:00"' in body and "Saturday" in body)
+    body = client.post("/settings", data={
+        "late_time": "09:00", "off_Saturday": "on", "off_Sunday": "on",
+    }, follow_redirects=True).data.decode("utf-8")
+    cfg = json.loads((tmp / "config.json").read_text("utf-8"))
+    check("settings saved to config.json",
+          "Settings saved" in body and cfg.get("LATE_TIME") == "09:00"
+          and set(cfg.get("OFF_DAYS", [])) == {"Saturday", "Sunday"}, str(cfg))
+    body = client.get("/attendance").data.decode("utf-8")
+    check("late time applies on the attendance page",
+          "Late time is set to <b>09:00</b>" in body)
+    out = client.post("/attendance", data={
+        "emp_id": "emp_001", "day": "2026-10-13", "arrival": "09:30",
+        "hours": "8", "day_type": "worked",
+    }, follow_redirects=True).data.decode("utf-8")
+    check("new late time drives the status (09:30 now Late)",
+          "2026-10-13: Late" in out, out[:200])
+    body = client.post("/settings", data={"late_time": "25:00"},
+                       follow_redirects=True).data.decode("utf-8")
+    cfg = json.loads((tmp / "config.json").read_text("utf-8"))
+    check("invalid late time rejected",
+          "must be a valid time" in body and cfg.get("LATE_TIME") == "09:00", str(cfg))
+    client.post("/settings", data={"late_time": "22:00", "off_Saturday": "on"},
+                follow_redirects=True)
+    cfg = json.loads((tmp / "config.json").read_text("utf-8"))
+    check("settings restored (22:00, Saturday only)",
+          cfg.get("LATE_TIME") == "22:00" and cfg.get("OFF_DAYS") == ["Saturday"], str(cfg))
+
     # report --------------------------------------------------------------
     failed = [r for r in results if not r[1]]
     for name, ok, extra in results:

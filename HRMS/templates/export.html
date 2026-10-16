@@ -49,10 +49,11 @@
     <li><b>Unmarked = Absent:</b> opening this page fills every working day you have not marked
       with a saved <b>Absent</b> record (past days only; records you already marked are never
       overwritten - change them to <b>Approved leave</b> on the Attendance page if needed).</li>
-    <li><b>Off days skipped:</b> {{ off_days|join(', ') if off_days else 'none' }} - edit
-      <code>OFF_DAYS</code> in <code>data/config.json</code> (e.g. add "Sunday").</li>
+    <li><b>Off days skipped:</b> {{ off_days|join(', ') if off_days else 'none' }} - change them
+      in <a class="inline" href="{{ url_for('settings_page') }}">Settings</a> (or edit
+      <code>OFF_DAYS</code> in <code>data/config.json</code>).</li>
     <li><b>Ex employees:</b> only up to the last day they were marked in this month.</li>
-    <li>Late after <b>{{ late_time }}</b>; statuses are Present / Late / Absent / Leave.</li>
+    <li>Late after <b>{{ late_time }}</b> (<a class="inline" href="{{ url_for('settings_page') }}">Settings</a>); statuses are Present / Late / Absent / Leave.</li>
   </ul>
 </div>
 

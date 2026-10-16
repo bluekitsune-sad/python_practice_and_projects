@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Edit {{ emp.id }}{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Edit {{ emp.id }}</h2>
+  <form method="post">
+    <div class="row">
+      <div>
+        <label for="name">Name *</label>
+        <input type="text" id="name" name="name"
+               value="{{ request.form.get('name', emp.get('name', '')) }}" required>
+      </div>
+      <div>
+        <label for="department">Department (optional)</label>
+        <input type="text" id="department" name="department"
+               value="{{ request.form.get('department', emp.get('department', '')) }}" placeholder="e.g. Operations">
+      </div>
+      <div>
+        <label for="designation">Designation (optional)</label>
+        <input type="text" id="designation" name="designation"
+               value="{{ request.form.get('designation', emp.get('designation', '')) }}" placeholder="e.g. Supervisor">
+      </div>
+      <div>
+        <label for="added_on">Joined (when auto-fill starts)</label>
+        <input type="date" id="added_on" name="added_on"
+               value="{{ request.form.get('added_on', emp.get('added_on', '')) }}">
+      </div>
+      <div style="flex:0 0 auto; display:flex; align-items:flex-end; gap:10px">
+        <button type="submit">Save changes</button>
+        <a class="btn ghost" href="{{ url_for('employees_page') }}">Cancel</a>
+      </div>
+    </div>
+    <p class="hint">
+      The ID (<code>{{ emp.id }}</code>) never changes. Leave <b>Joined</b> empty if unknown.
+      Attendance history stays - use <b>Mark ex</b> on the Employees page to retire the person,
+      or <b>Delete</b> there to remove them and their records.
+    </p>
+  </form>
+</div>
+{% endblock %}

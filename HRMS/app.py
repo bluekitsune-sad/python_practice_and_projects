@@ -41,6 +41,9 @@ MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
 ]
+WEEKDAYS = [
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+]
 EXPORT_HEADERS = [
     "Employee ID", "Name", "Department", "Designation", "Date", "Status", "Hours",
 ]
@@ -83,7 +86,7 @@ def load_config() -> dict:
     cfg = _load("config.json", {})
     cfg.setdefault("LATE_TIME", "22:00")
     # Weekday names that are never auto-marked absent (e.g. ["Saturday"] or
-    # ["Saturday", "Sunday"]). Edit data/config.json to change.
+    # ["Saturday", "Sunday"]). Edited on the Settings page (or by hand in the file).
     cfg.setdefault("OFF_DAYS", ["Saturday"])
     return cfg
 
@@ -135,6 +138,17 @@ def to_minutes(hhmm: str) -> int:
 
 def attendance_status(arrival: str, late_time: str) -> str:
     return "Late" if to_minutes(arrival) > to_minutes(late_time) else "Present"
+
+
+def normalize_time(value: str) -> str | None:
+    """'9:5' -> '09:05'; anything outside 00:00-23:59 -> None (invalid)."""
+    parts = str(value).split(":")
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        return None
+    hours, minutes = int(parts[0]), int(parts[1])
+    if hours > 23 or minutes > 59:
+        return None
+    return f"{hours:02d}:{minutes:02d}"
 
 
 def next_transaction_id(items: list[dict]) -> str:
@@ -395,6 +409,39 @@ def employee_delete(emp_id):
         "ok",
     )
     return redirect(url_for("employees_page"))
+
+
+@app.route("/employees/<emp_id>/edit", methods=["GET", "POST"])
+def employee_edit(emp_id: str):
+    """Edit an employee's name / department / designation / join date (ID never changes)."""
+    employees = load_employees()
+    emp = next((e for e in employees if str(e.get("id")) == emp_id), None)
+    if emp is None:
+        flash(f"Employee {emp_id} not found.", "error")
+        return redirect(url_for("employees_page"))
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        added_on = (request.form.get("added_on") or "").strip()
+        if not name:
+            flash("Name is required.", "error")
+        else:
+            bad_date = False
+            if added_on:
+                try:
+                    date.fromisoformat(added_on)
+                except ValueError:
+                    bad_date = True
+            if bad_date:
+                flash("Join date must be a valid date (YYYY-MM-DD).", "error")
+            else:
+                emp["name"] = name
+                emp["department"] = (request.form.get("department") or "").strip()
+                emp["designation"] = (request.form.get("designation") or "").strip()
+                emp["added_on"] = added_on
+                save_employees(employees)
+                flash(f"Updated {emp_id} - {name}.", "ok")
+                return redirect(url_for("employees_page"))
+    return render_template("employee_edit.html", emp=emp)
 
 
 @app.route("/attendance", methods=["GET", "POST"])
@@ -953,6 +1000,100 @@ def calendar_page():
         prev={"month": prev_month, "year": prev_year},
         next={"month": next_month, "year": next_year},
         today=today.isoformat(),
+    )
+
+
+@app.get("/calendar/<day>")
+def day_page(day: str):
+    """Full detail for one day: complete attendance table + that day's transactions.
+
+    Transactions are matched to employees by case-insensitive exact name so each
+    row can show "how many / how much" for that person; the footer total covers
+    EVERY transaction of the day (names outside the employee list are noted below).
+    """
+    try:
+        day_date = date.fromisoformat(day)
+    except ValueError:
+        flash(f"Invalid date '{day}' - expected YYYY-MM-DD.", "error")
+        return redirect(url_for("calendar_page"))
+
+    # same fill rule as the calendar/export pages, so nothing is missing here
+    filled, _ = materialize_absents(day_date.year, day_date.month)
+    if filled:
+        flash(f"Auto-filled {filled} unmarked working day(s) as Absent.", "ok")
+
+    cfg = load_config()
+    off_names = {str(d).strip().lower() for d in cfg.get("OFF_DAYS", [])}
+    records = load_attendance()
+    employees = load_employees()
+    day_txns = [t for t in load_transactions() if str(t.get("date", "")) == day]
+    total_amount = sum(_amount(t) for t in day_txns)
+
+    def norm_name(value) -> str:
+        return str(value or "").strip().lower()
+
+    employee_names = {norm_name(e.get("name")) for e in employees}
+    unmatched = [t for t in day_txns if norm_name(t.get("name")) not in employee_names]
+
+    rows = []
+    for emp in sorted(employees, key=lambda e: str(e.get("id", ""))):
+        emp_id = str(emp.get("id", ""))
+        rec = records.get(emp_id, {}).get(day)
+        mine = [t for t in day_txns if norm_name(t.get("name")) == norm_name(emp.get("name"))]
+        added = str(emp.get("added_on", "")).strip()
+        if added and added > day:
+            continue  # not joined yet on that date
+        if rec is None and not emp.get("active", True) and not mine:
+            continue  # ex employee with nothing that day
+        rows.append({
+            "emp": emp,
+            "rec": rec,
+            "count": len(mine),
+            "amount": sum(_amount(t) for t in mine),
+        })
+
+    return render_template(
+        "day.html",
+        day=day_date,
+        heading=day_date.strftime("%A, %d %B %Y"),
+        is_off=day_date.strftime("%A").lower() in off_names,
+        is_future=day_date > date.today(),
+        rows=rows,
+        txns=day_txns,
+        total_amount=total_amount,
+        unmatched=unmatched,
+        unmatched_amount=sum(_amount(t) for t in unmatched),
+        prev_iso=(day_date - timedelta(days=1)).isoformat(),
+        prev_short=(day_date - timedelta(days=1)).strftime("%d %b"),
+        next_iso=(day_date + timedelta(days=1)).isoformat(),
+        next_short=(day_date + timedelta(days=1)).strftime("%d %b"),
+    )
+
+
+@app.route("/settings", methods=["GET", "POST"])
+def settings_page():
+    """Edit data/config.json from the web: LATE_TIME + OFF_DAYS."""
+    cfg = load_config()
+    late_val = str(cfg.get("LATE_TIME", "22:00"))
+    off_days = [str(d) for d in cfg.get("OFF_DAYS", [])]
+    if request.method == "POST":
+        late_val = (request.form.get("late_time") or "").strip()
+        off_days = [d for d in WEEKDAYS if request.form.get(f"off_{d}")]
+        normalized = normalize_time(late_val)
+        if normalized is None:
+            flash("Late time must be a valid time between 00:00 and 23:59 (e.g. 22:00).", "error")
+        else:
+            cfg["LATE_TIME"] = normalized
+            cfg["OFF_DAYS"] = off_days
+            _save("config.json", cfg)
+            flash(
+                f"Settings saved - late after {normalized}; "
+                f"off days: {', '.join(off_days) or 'none'}.",
+                "ok",
+            )
+            return redirect(url_for("settings_page"))
+    return render_template(
+        "settings.html", late_val=late_val, off_days=off_days, weekdays=WEEKDAYS
     )
 
 

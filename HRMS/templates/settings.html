@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Settings{% endblock %}
+{% block head %}
+<style>
+  .offdays { display:flex; gap:8px; flex-wrap:wrap; }
+  .chk {
+    display:flex; align-items:center; gap:7px; margin:0; cursor:pointer;
+    background:#171A14; border:1px solid var(--line); border-radius:999px;
+    padding:8px 14px; font-size:13px; color:var(--ink); transition:.15s;
+  }
+  .chk:hover { border-color:var(--accent); }
+  .chk input { accent-color:var(--accent); width:15px; height:15px; margin:0; cursor:pointer; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Settings</h2>
+  <form method="post">
+    <div class="row">
+      <div>
+        <label for="late_time">Late after this time (HH:MM, 24h)</label>
+        <input type="time" id="late_time" name="late_time" value="{{ late_val }}" required>
+        <p class="hint" style="margin-top:8px">
+          Arriving after <b>{{ late_val or 'the entered time' }}</b> = status <b>Late</b>.
+          Earlier (or exactly on time) = <b>Present</b>.
+        </p>
+      </div>
+      <div style="flex:2">
+        <label>Off days (never auto-marked absent)</label>
+        <div class="offdays">
+          {% for d in weekdays %}
+          <label class="chk">
+            <input type="checkbox" name="off_{{ d }}" value="1" {{ 'checked' if d in off_days }}>
+            {{ d }}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="hint" style="margin-top:8px">
+          Unchecked days get the automatic <b>Absent</b> fill when a month is opened on the
+          Calendar or Export page. Tick every day to turn that off.
+        </p>
+      </div>
+      <div style="flex:0 0 auto; display:flex; align-items:flex-end">
+        <button type="submit">Save settings</button>
+      </div>
+    </div>
+    <p class="hint">
+      Saved to <code>data/config.json</code> (you can still edit that file by hand).
+      This only changes how <b>future</b> marks are judged - records already saved keep
+      the status they had.
+    </p>
+  </form>
+</div>
+{% endblock %}

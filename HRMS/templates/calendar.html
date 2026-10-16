@@ -25,6 +25,7 @@
   .cal-cell {
     background:#171A14; border:1px solid var(--line); border-radius:14px; padding:11px;
     min-height:116px; display:flex; flex-direction:column; gap:6px; transition:.15s;
+    text-decoration:none; color:inherit;
   }
   .cal-cell:hover { border-color:rgba(159,220,86,.45); transform:translateY(-2px); }
   .cal-cell.off { background:rgba(234,255,210,.03); border-style:dashed; }
@@ -91,8 +92,9 @@
     {% else %}
       {% set pct = cell.pct %}
       {% set pc = 'p-none' if pct is none else ('p-hi' if pct >= 90 else ('p-mid' if pct >= 70 else 'p-lo')) %}
-      <div class="cal-cell {{ 'off' if cell.off }} {{ 'today' if cell.iso == today }}"
-           title="{{ cell.tip }}">
+      <a class="cal-cell {{ 'off' if cell.off }} {{ 'today' if cell.iso == today }}"
+         href="{{ url_for('day_page', day=cell.iso) }}"
+           title="{{ cell.tip }} - click for the full day">
         <div class="cal-day">{{ cell.day }}</div>
         <div class="cal-spacer"></div>
         {% if cell.txns %}
@@ -100,7 +102,7 @@
           <div class="cal-txn-cnt">{{ cell.txns }} transaction{{ 's' if cell.txns != 1 }}</div>
         {% endif %}
         <div class="cal-pct {{ pc }}">{{ cell.pct_text }}</div>
-      </div>
+      </a>
     {% endif %}
   {% endfor %}
 </div>
@@ -112,5 +114,6 @@
   <span style="color:var(--pale)">&#9679; 70-89%</span>
   <span style="color:#FF9E93">&#9679; below 70%</span>
   <span>Dashed cells = off days</span>
+  <span><b>Click a day</b> to open its full attendance + transactions</span>
 </div>
 {% endblock %}

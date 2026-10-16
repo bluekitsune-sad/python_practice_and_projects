@@ -35,13 +35,15 @@ flowchart LR
 | Page | What it does |
 |------|--------------|
 | **Home** | Counts (employees, attendance, transactions) + quick start. |
-| **Employees** | Add employees (ID `emp_001`, `emp_002`... auto-generated). Department and designation are optional. `Mark ex` keeps the person out of active use but preserves all history; `Delete` removes the person **and** their attendance records (confirmation prompt). |
+| **Employees** | Add employees (ID `emp_001`, `emp_002`... auto-generated). Department and designation are optional. **Edit** fixes the name / department / designation / join date (the ID never changes). `Mark ex` keeps the person out of active use but preserves all history; `Delete` removes the person **and** their attendance records (confirmation prompt). |
 | **Attendance** | Pick employee + date (defaults to today) and a **day type**: *Worked* (enter arrival time + hours; status is automatic - **Present** at/before the late time, **Late** after), *Approved leave*, or *Absent*. Re-opening a date that has data shows an orange warning and prefills it. |
 | **Transactions** | Save an **image/receipt + name + date + amount + client (optional)**. Search by **month + year** (see count, total amount and **how many people** transacted that month) or by **person for their complete history**. Delete removes the record and its image. |
-| **Calendar** | Month grid: every day cell shows that day's **total transactions (all names)** and **attendance %**; beside the month name sit the **month's attendance %** and **month total**. Prev/Next navigation, off days dashed, today highlighted. |
+| **Calendar** | Month grid: every day cell shows that day's **total transactions (all names)** and **attendance %**; beside the month name sit the **month's attendance %** and **month total**. Prev/Next navigation, off days dashed, today highlighted. **Click any day** to open its detail page. |
+| **Day detail** | `/calendar/<date>` - that day's **complete attendance in a table** (ID, name, department, status badge, arrival, hours) with a **Transactions column** (count + amount per person) and a **Day total row** for all transactions. Prev-day / month / next-day links; off-day and future-date banners. |
 | **Totals** | Dashboard: KPI cards (all-time amount, this month, people, count), a **bar chart** of the last 12 months, a **donut** of top people by amount and the recent transactions. |
 | **Export** | Choose month + year, download the attendance CSV or XLSX. Opening this page also **saves** the auto-absents (see below). |
 | **Import** | Upload a correctly formatted `.json` file to bulk add/update employees and attendance. Nothing is ever deleted by an import. |
+| **Settings** | Edit `LATE_TIME` (after this time an arrival = `Late`) and tick the `OFF_DAYS` - saved to `data/config.json`, no file editing needed. Invalid times are rejected. |
 
 ## Transactions
 
@@ -99,15 +101,31 @@ counts as expected but not attended.
 Opening a month on the calendar runs the same *unmarked = Absent* fill as the Export page,
 so the percentages always reflect reality.
 
+### Clicking a day
+
+Every day cell links to `/calendar/<YYYY-MM-DD>` - the **day detail** page:
+
+- Chips for the day: **transaction count** and **total amount**.
+- The **complete attendance table** for that day: ID, name, department, status badge
+  (`Present` / `Late` / `Absent` / `Leave`), arrival and hours. Active employees with no
+  record show `—`; ex employees only appear when they actually have something that day;
+  people who had not joined yet are left out.
+- A **Transactions column per person** (`2 txns · 1,500.50`) - records are matched to the
+  employee by case-insensitive exact name - plus a **Day total row** that sums *every*
+  transaction of the day. Transactions recorded under a name that isn't in the employee
+  list are listed below the table (still included in the day total).
+- Off-day and future-date banners, and `‹ prev day` / `Month view` / `next day ›` links.
+- Opening a day runs the same auto-absent fill for that month first.
+
 ## Attendance: unmarked day = Absent (automatic)
 
-When you open the **Export** or **Calendar** page for a month, every **working day** you have
-not marked is filled with a saved `Absent` record - so nobody can be missed just because you
-forgot a day.
+When you open the **Export** or **Calendar** page for a month (or any **day page**), every
+**working day** you have not marked is filled with a saved `Absent` record - so nobody can
+be missed just because you forgot a day.
 
 ```mermaid
 flowchart TD
-    U["Pick month + year on Export or Calendar"] --> F["materialize_absents()"]
+    U["Open a month on Export/Calendar or any day page"] --> F["materialize_absents()"]
     F --> Q{"day already marked?"}
     Q -->|"yes"| KEEP["never overwritten<br/>change it to Approved leave if needed"]
     Q -->|"no"| W{"working day AND in the past?"}
@@ -119,21 +137,25 @@ flowchart TD
 ```
 
 - **Past days only** - future/current days are never guessed.
-- **Off days are skipped** - default `["Saturday"]`, edit `OFF_DAYS` in `data/config.json`
-  (e.g. `["Saturday", "Sunday"]`).
+- **Off days are skipped** - default `["Saturday"]`, change them on the **Settings** page
+  (or edit `OFF_DAYS` in `data/config.json`, e.g. `["Saturday", "Sunday"]`).
 - **Ex employees**: only filled up to the last day they were marked in that month.
 - **Not-yet-joined employees** (`added_on` is later) are not touched.
 
 ## The settings constants
 
-`data/config.json`:
+Both live in `data/config.json` and are edited from the web on the **Settings** page
+(nav bar) - no need to touch the file by hand (though you still can):
 
 ```json
 { "LATE_TIME": "22:00", "OFF_DAYS": ["Saturday"] }
 ```
 
-- `LATE_TIME` - arrival after this time (24h clock) = status `Late`.
+- `LATE_TIME` - arrival after this time (24h clock, `HH:MM`, must be `00:00`-`23:59`) =
+  status `Late`. Applies to marks saved **after** the change; saved records keep their status.
 - `OFF_DAYS` - weekday names (English, as in `strftime("%A")`) never auto-marked absent.
+  The Settings page lists all seven days as checkboxes; untick every day to disable the
+  auto-absent fill entirely.
 
 ## Export files (tested against Google Sheets)
 
@@ -220,7 +242,7 @@ palette (bars in lime, current month in pale).
 python smoke_test.py
 ```
 
-89 end-to-end checks against a temporary data folder (your real data is not touched).
+110 end-to-end checks against a temporary data folder (your real data is not touched).
 
 ## Not included (on purpose)
 

@@ -17,8 +17,8 @@ HRMS/
   smoke_test.py     end-to-end checks (python smoke_test.py) - temp data dir, never real data
   start.bat         Windows launcher: opens a shell and runs python app.py (keeps it open)
   requirements.txt  flask, openpyxl
-  templates/        base.html (layout + theme CSS) + index/employees/attendance/
-                    transactions/calendar/dashboard/export/import
+  templates/        base.html (layout + theme CSS) + index/employees/employee_edit/
+                    attendance/settings/transactions/calendar/day/dashboard/export/import
   data/             JSON source of truth: config.json, employees.json, attendance.json,
                     transactions.json   +  data/uploads/ (transaction images) - all local-only
   README.md         user-facing docs (incl. mermaid diagrams)  |  TODO.md: status + future
@@ -38,7 +38,20 @@ HRMS/
   `MAX_CONTENT_LENGTH`. Serving via `/uploads/<filename>` + `send_from_directory` only.
 - **Settings**: `LATE_TIME` (default `22:00`) and `OFF_DAYS` (default `["Saturday"]`,
   English weekday names) live in `data/config.json`, read via `load_config()`. Never
-  hardcode them elsewhere.
+  hardcode them elsewhere. They are edited from the web on the **Settings** page
+  (`/settings`, `settings_page`): time validated/normalised by `normalize_time()` (HH:MM,
+  00:00-23:59), off days built from the `WEEKDAYS` constant, saved through `_save` so the
+  file stays atomic and keeps any other keys.
+- **Employee edit**: `/employees/<id>/edit` (`employee_edit`) changes name / department /
+  designation / `added_on` only - the `emp_001` id never changes. Re-render the form (no
+  redirect) on validation errors so typed values survive; `Mark ex` / `Delete` stay on the
+  list page.
+- **Day detail** (`/calendar/<YYYY-MM-DD>`, `day_page`): one day - complete attendance table
+  (status badges, arrival, hours) plus transactions. The per-row *Transactions* cell matches
+  records to the employee by **case-insensitive exact name**; the footer total always covers
+  EVERY transaction of that day, and names not in the employee list are noted under the
+  table. Runs `materialize_absents` first (same fill rule as calendar/export), shows off-day
+  and future-date banners, and offers prev-day / month-view / next-day links.
 - **Statuses**: only `Present`, `Late`, `Absent`, `Leave` (`STATUSES`); `Leave` = approved
   leave, marked manually via the attendance form's day-type select. Worked-day statuses are
   derived from arrival vs LATE_TIME unless explicitly given (import).
@@ -72,7 +85,7 @@ HRMS/
 
 ## Before finishing a change
 
-1. Run `python smoke_test.py` - must stay 89/89 (extend it when you add behaviour).
+1. Run `python smoke_test.py` - must stay 110/110 (extend it when you add behaviour).
 2. Check `http://127.0.0.1:5000` renders (python app.py, or start.bat on Windows).
 3. Update `README.md` and `TODO.md` so docs match reality.
 4. The JSON files are user data - never rewrite their schema without a migration note.

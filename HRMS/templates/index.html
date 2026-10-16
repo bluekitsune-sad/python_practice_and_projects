@@ -11,13 +11,14 @@
 <div class="card" style="margin-top:20px">
   <h2>Quick start</h2>
   <ol style="line-height:2; font-size:15px; margin:0; padding-left:20px">
-    <li><a class="inline" href="{{ url_for('employees_page') }}">Employees</a> - add people (ID like <code>emp_001</code> is automatic). Mark leavers as <b>ex</b> to keep their history, or delete them.</li>
+    <li><a class="inline" href="{{ url_for('employees_page') }}">Employees</a> - add people (ID like <code>emp_001</code> is automatic), <b>Edit</b> fixes their details. Mark leavers as <b>ex</b> to keep their history, or delete them.</li>
     <li><a class="inline" href="{{ url_for('attendance_page') }}">Attendance</a> - pick employee + date (defaults to today) + day type (Worked / Approved leave / Absent). Arriving after the late time is marked <b>Late</b>.</li>
     <li><a class="inline" href="{{ url_for('transactions_page') }}">Transactions</a> - save an image/receipt with name, date, amount and optional client. Search a month (total + how many people) or one person's complete history.</li>
-    <li><a class="inline" href="{{ url_for('calendar_page') }}">Calendar</a> - month grid: each day shows its transaction total and attendance %, with the month's attendance % and total beside the month name.</li>
+    <li><a class="inline" href="{{ url_for('calendar_page') }}">Calendar</a> - month grid: each day shows its transaction total and attendance %, with the month's attendance % and total beside the month name. <b>Click a day</b> for its full attendance table + transactions.</li>
     <li><a class="inline" href="{{ url_for('dashboard') }}">Totals</a> - graphs and totals of everything: monthly bars, top people donut, this-month KPIs.</li>
     <li><a class="inline" href="{{ url_for('export_page') }}">Export</a> - choose month + year, download the attendance CSV/XLSX (unmarked working days are auto-filled as Absent). Upload it to Google Drive / Sheets as-is.</li>
     <li><a class="inline" href="{{ url_for('import_page') }}">Import JSON</a> - load a correctly formatted JSON file to bulk-update employees / attendance.</li>
+    <li><a class="inline" href="{{ url_for('settings_page') }}">Settings</a> - change the <b>late time</b> (after it an arrival counts as Late) and pick the <b>off days</b> - no file editing needed.</li>
   </ol>
 </div>
 

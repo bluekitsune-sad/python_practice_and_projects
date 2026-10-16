@@ -47,6 +47,7 @@
           {% endif %}
         </td>
         <td style="text-align:right; white-space:nowrap">
+          <a class="btn small ghost" href="{{ url_for('employee_edit', emp_id=emp.id) }}">Edit</a>
           <form method="post" action="{{ url_for('employee_toggle', emp_id=emp.id) }}" style="display:inline">
             <button class="small ghost" type="submit">{{ 'Mark ex' if emp.active else 'Mark active' }}</button>
           </form>
