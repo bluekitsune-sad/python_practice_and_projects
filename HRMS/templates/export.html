@@ -44,6 +44,19 @@
 </div>
 
 <div class="card">
+  <h2>How this month is calculated</h2>
+  <ul style="font-size:14px; line-height:1.8; margin:0; padding-left:20px">
+    <li><b>Unmarked = Absent:</b> opening this page fills every working day you have not marked
+      with a saved <b>Absent</b> record (past days only; records you already marked are never
+      overwritten - change them to <b>Approved leave</b> on the Attendance page if needed).</li>
+    <li><b>Off days skipped:</b> {{ off_days|join(', ') if off_days else 'none' }} - edit
+      <code>OFF_DAYS</code> in <code>data/config.json</code> (e.g. add "Sunday").</li>
+    <li><b>Ex employees:</b> only up to the last day they were marked in this month.</li>
+    <li>Late after <b>{{ late_time }}</b>; statuses are Present / Late / Absent / Leave.</li>
+  </ul>
+</div>
+
+<div class="card">
   <h2>Google Sheets tip</h2>
   <p style="font-size:14px; margin:6px 0">
     Both formats open cleanly in Google Sheets: upload the file to Google Drive, then

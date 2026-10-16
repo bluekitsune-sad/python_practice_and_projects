@@ -1,3 +1,4 @@
 {
-  "LATE_TIME": "22:00"
+  "LATE_TIME": "22:00",
+  "OFF_DAYS": ["Saturday"]
 }

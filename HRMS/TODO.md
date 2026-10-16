@@ -5,14 +5,18 @@
 - [x] Flask app, no login, data stored in JSON files (`data/*.json`), run = update = close
 - [x] Employees: add / delete, auto ID `emp_001`, optional department + designation
 - [x] `Mark ex` soft-delete keeps attendance history; `Delete` removes employee + records (confirmed)
-- [x] Manual attendance entry: employee + date (defaults today) + arrival time + hours
+- [x] Manual attendance entry: employee + date (defaults today) + day type (Worked / Approved leave / Absent) + arrival time + hours
 - [x] Late-time constant `LATE_TIME = 22:00` in `data/config.json` -> arrival later than that = `Late`
 - [x] Re-opening an existing date shows an orange "already has data" warning, prefills it, saving updates
-- [x] Automatic status: Present / Late / Absent (checkbox for absent)
+- [x] Automatic status: Present / Late for worked days; explicit Absent / Approved leave (`Leave`)
+- [x] **Unmarked day = Absent**: opening the Export page saves Absent records for unmarked working days (past days only, never overwrites your marks) - so the sheet is always complete
+- [x] Off days never auto-filled: `OFF_DAYS` in `data/config.json`, default `["Saturday"]` (add `"Sunday"` if needed)
+- [x] Ex employees: auto-absent only up to their last marked day of the month; not-yet-joined employees untouched
 - [x] Export by month + year: CSV and XLSX downloads (empty month = message, no empty file)
-- [x] Google Sheets friendly: UTF-8 BOM CSV; XLSX with plain YYYY-MM-DD text dates, styled header, colour-coded status, frozen header + filter
+- [x] Google Sheets friendly: UTF-8 BOM CSV; XLSX with plain YYYY-MM-DD text dates, styled header, colour-coded status (incl. blue Leave), frozen header + filter
 - [x] JSON file import: bulk add/update employees and attendance, skips + reports invalid entries
-- [x] `smoke_test.py` - 43 end-to-end checks, all passing
+- [x] `start.bat` - double-click to run the app in a shell window
+- [x] `smoke_test.py` - 61 end-to-end checks, all passing
 - [x] Docs: `README.md` (user), `AGENTS.md` (agents), this file
 
 ## Later / if wanted (not built yet - do not build without asking)

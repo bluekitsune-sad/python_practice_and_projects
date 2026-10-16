@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 data/*.tmp
+# real data stays local - never pushed to GitHub
+data/employees.json
+data/attendance.json

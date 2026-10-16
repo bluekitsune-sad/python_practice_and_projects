@@ -7,10 +7,11 @@ Run:  python app.py   ->   http://127.0.0.1:5000
 
 from __future__ import annotations
 
+import calendar
 import csv
 import io
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from flask import (
@@ -31,7 +32,8 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
-STATUSES = ("Present", "Late", "Absent")
+# "Leave" = approved leave (manually marked), not an absence.
+STATUSES = ("Present", "Late", "Absent", "Leave")
 MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
@@ -51,7 +53,9 @@ def _load(filename: str, default):
     if not path.exists():
         return default
     try:
-        with path.open(encoding="utf-8") as fh:
+        # utf-8-sig: also reads files that start with a UTF-8 BOM (e.g. edited
+        # in PowerShell/Excel) instead of failing and silently using empty data.
+        with path.open(encoding="utf-8-sig") as fh:
             return json.load(fh)
     except (json.JSONDecodeError, OSError) as exc:
         flash(f"WARNING: could not read {filename} ({exc}). Using empty data.", "error")
@@ -69,6 +73,9 @@ def _save(filename: str, data) -> None:
 def load_config() -> dict:
     cfg = _load("config.json", {})
     cfg.setdefault("LATE_TIME", "22:00")
+    # Weekday names that are never auto-marked absent (e.g. ["Saturday"] or
+    # ["Saturday", "Sunday"]). Edit data/config.json to change.
+    cfg.setdefault("OFF_DAYS", ["Saturday"])
     return cfg
 
 
@@ -130,6 +137,71 @@ def export_rows(year: int, month: int) -> list[list]:
     return rows
 
 
+def materialize_absents(year: int, month: int) -> tuple[int, list]:
+    """Save a default 'Absent' record for every unmarked working day of the month.
+
+    Called from the export page, so attendance.json and the download always match.
+
+    Rules:
+      - past days only (a future/current-month day is never guessed);
+      - OFF_DAYS (data/config.json, default Saturday) are never filled;
+      - active employees: filled from max(month start, added_on);
+      - ex employees: only up to their last marked day of that month
+        (nothing is guessed for months they never worked);
+      - records you already marked are never overwritten - change them
+        (e.g. to Approved leave) on the attendance page.
+
+    Returns (number of records written, off day names).
+    """
+    cfg = load_config()
+    off_days = [str(d).strip() for d in cfg.get("OFF_DAYS", []) if str(d).strip()]
+    off_names = {d.lower() for d in off_days}
+    employees = load_employees()
+    month_start = date(year, month, 1)
+    month_end = date(year, month, calendar.monthrange(year, month)[1])
+    last_allowed = min(month_end, date.today())
+    if not employees or last_allowed < month_start:
+        return 0, off_days
+
+    prefix = f"{year:04d}-{month:02d}"
+    records = load_attendance()
+    filled = 0
+    for emp in employees:
+        existing = records.get(emp["id"], {})
+        emp_start = month_start
+        added = str(emp.get("added_on", "")).strip()
+        if added:
+            try:
+                emp_start = max(emp_start, date.fromisoformat(added))
+            except ValueError:
+                pass
+        emp_end = last_allowed
+        if not emp.get("active", True):
+            marked = []
+            for key in existing:
+                if str(key).startswith(prefix):
+                    try:
+                        marked.append(date.fromisoformat(str(key)))
+                    except ValueError:
+                        continue
+            if not marked:
+                continue  # ex employee, no marks this month -> guess nothing
+            emp_end = min(max(marked), last_allowed)
+        additions = {}
+        cursor = emp_start
+        while cursor <= emp_end:
+            iso = cursor.isoformat()
+            if cursor.strftime("%A").lower() not in off_names and iso not in existing:
+                additions[iso] = {"arrival": "", "hours": 0.0, "status": "Absent"}
+            cursor += timedelta(days=1)
+        if additions:
+            records.setdefault(emp["id"], {}).update(additions)
+            filled += len(additions)
+    if filled:
+        save_attendance(records)
+    return filled, off_days
+
+
 def make_csv(rows: list[list]) -> io.BytesIO:
     buf = io.StringIO()
     writer = csv.writer(buf)  # comma separated, quoted when needed, CRLF lines
@@ -150,6 +222,7 @@ def make_xlsx(rows: list[list]) -> io.BytesIO:
         "Present": PatternFill("solid", fgColor="E2EFDA"),
         "Late": PatternFill("solid", fgColor="FFF2CC"),
         "Absent": PatternFill("solid", fgColor="FCE4E4"),
+        "Leave": PatternFill("solid", fgColor="DDEBF7"),
     }
 
     ws.append(EXPORT_HEADERS)
@@ -257,7 +330,7 @@ def attendance_page():
     if request.method == "POST":
         emp_id = (request.form.get("emp_id") or "").strip()
         day = (request.form.get("day") or "").strip()
-        absent = request.form.get("absent") == "on"
+        day_type = (request.form.get("day_type") or "worked").strip()
         arrival = (request.form.get("arrival") or "").strip()
         hours_raw = (request.form.get("hours") or "").strip()
 
@@ -273,11 +346,13 @@ def attendance_page():
 
         record = None
         if not error:
-            if absent:
+            if day_type == "absent":
                 record = {"arrival": "", "hours": 0.0, "status": "Absent"}
+            elif day_type == "leave":
+                record = {"arrival": "", "hours": 0.0, "status": "Leave"}
             else:
                 if not arrival:
-                    error = "Arrival time is required (or tick 'Mark absent')."
+                    error = "Arrival time is required (or pick leave/absent as the day type)."
                 else:
                     try:
                         hours = float(hours_raw or "0")
@@ -328,6 +403,14 @@ def export_page():
         year = int(request.args.get("year", today.year))
     except ValueError:
         month, year = today.month, today.year
+
+    filled, off_days = materialize_absents(year, month)
+    if filled:
+        flash(
+            f"Auto-filled {filled} unmarked working day(s) as Absent "
+            f"(off days skipped: {', '.join(off_days) or 'none'}).",
+            "ok",
+        )
     count = len(export_rows(year, month))
     return render_template(
         "export.html",
@@ -336,6 +419,8 @@ def export_page():
         count=count,
         months=MONTH_NAMES,
         today=today,
+        off_days=off_days,
+        late_time=load_config()["LATE_TIME"],
     )
 
 

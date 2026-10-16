@@ -35,14 +35,15 @@
     "emp_001": {
       "2026-10-01": { "arrival": "09:00", "hours": 8, "status": "Present" },
       "2026-10-02": { "arrival": "22:30", "hours": 8, "status": "Late" },
-      "2026-10-03": { "arrival": "",      "hours": 0, "status": "Absent" }
+      "2026-10-03": { "arrival": "",      "hours": 0, "status": "Absent" },
+      "2026-10-06": { "arrival": "",      "hours": 0, "status": "Leave" }
     }
   }
 }</pre>
   <p class="hint">
     Notes: an employee without an <code>id</code> gets the next free one. A missing/unknown
     <code>status</code> is recomputed from <code>arrival</code> vs the late time.
-    <code>status</code> must be Present, Late or Absent.
+    <code>status</code> must be Present, Late, Absent or Leave (approved leave).
   </p>
 </div>
 {% endblock %}

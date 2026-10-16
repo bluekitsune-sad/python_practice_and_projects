@@ -47,18 +47,21 @@ def main() -> int:
     check("IDs auto-generated", json.loads((tmp / "employees.json").read_text("utf-8"))["employees"][0]["id"] == "emp_001")
 
     # attendance ----------------------------------------------------------
-    def save(day: str, arrival: str, hours: str, absent: str | None = None) -> str:
-        data = {"emp_id": "emp_001", "day": day, "arrival": arrival, "hours": hours}
-        if absent:
-            data["absent"] = absent
+    def save(day: str, arrival: str, hours: str, day_type: str = "worked") -> str:
+        data = {
+            "emp_id": "emp_001", "day": day, "arrival": arrival,
+            "hours": hours, "day_type": day_type,
+        }
         return client.post("/attendance", data=data, follow_redirects=True).data.decode("utf-8")
 
     out = save("2026-10-01", "09:00", "8")
     check("on-time -> Present", "Saved emp_001 on 2026-10-01: Present." in out)
     out = save("2026-10-02", "22:30", "8")
     check("after 22:00 -> Late", "Late" in out)
-    out = save("2026-10-03", "", "0", absent="on")
+    out = save("2026-10-03", "", "0", "absent")
     check("absent saved", "Absent" in out)
+    out = save("2026-09-15", "", "0", "leave")
+    check("approved leave saved", "Saved emp_001 on 2026-09-15: Leave." in out)
     out = save("2026-10-01", "09:30", "7.5")
     check("re-save shows Update", "Updated emp_001 on 2026-10-01" in out)
     out = save("2026-10-04", "", "8")
@@ -88,6 +91,12 @@ def main() -> int:
     ).getvalue().decode("utf-8-sig")
     check("csv quotes names containing commas", '"Khan, Ali"' in sample_csv)
 
+    # leave export (September, separate from the October baseline) ---------
+    resp = client.get("/export/download?month=9&year=2026&format=csv")
+    text_sep = resp.data.decode("utf-8-sig")
+    check("september export has Leave row", "2026-09-15,Leave,0.0" in text_sep.replace('"', ""))
+    check("september export row count", len(text_sep.splitlines()) == 2, str(len(text_sep.splitlines())))
+
     # export XLSX ---------------------------------------------------------
     resp = client.get("/export/download?month=10&year=2026&format=xlsx")
     check("xlsx 200", resp.status_code == 200)
@@ -113,7 +122,10 @@ def main() -> int:
             {"name": "New Guy", "designation": "Operator"},
         ],
         "attendance": {
-            "emp_002": {"2026-10-05": {"arrival": "22:15", "hours": 8}},
+            "emp_002": {
+                "2026-10-05": {"arrival": "22:15", "hours": 8},
+                "2026-10-06": {"arrival": "", "hours": 0, "status": "Leave"},
+            },
             "emp_999": {"2026-10-05": {"arrival": "09:00", "hours": 8}},
         },
     }
@@ -121,7 +133,7 @@ def main() -> int:
         "file": (io.BytesIO(json.dumps(sample).encode()), "sample.json"),
     }, content_type="multipart/form-data", follow_redirects=True)
     body = resp.data.decode("utf-8")
-    check("import summary", "1 employee(s) added, 1 updated, 1 attendance record(s) added, 0 updated." in body, body[:400])
+    check("import summary", "1 employee(s) added, 1 updated, 2 attendance record(s) added, 0 updated." in body, body[:400])
     check("import skips unknown emp", "unknown employee: emp_999" in body)
     check("import derived Late status", client.get("/api/attendance?emp_id=emp_002&date=2026-10-05").get_json()["record"]["status"] == "Late")
     resp = client.post("/import", data={
@@ -136,9 +148,88 @@ def main() -> int:
     resp = client.post("/employees/emp_002/toggle", follow_redirects=True)
     check("mark active again", b"ACTIVE" in resp.data)
     resp = client.post("/employees/emp_002/delete", follow_redirects=True)
-    check("delete employee + its attendance", b"Deleted emp_002 and 1 attendance record(s)" in resp.data)
+    check("delete employee + its attendance", b"Deleted emp_002 and 2 attendance record(s)" in resp.data)
     check("attendance for emp_002 gone", "emp_002" not in json.loads((tmp / "attendance.json").read_text("utf-8"))["records"])
     check("emp_001 attendance kept", "emp_001" in json.loads((tmp / "attendance.json").read_text("utf-8"))["records"])
+
+    # default absent fill: unmarked working day -> saved Absent -------------
+    # Pin "today" so expectations never change with the real date.
+    from datetime import date as _RealDate
+
+    class _FixedDate(_RealDate):
+        @classmethod
+        def today(cls):
+            return cls(2026, 10, 16)  # a Friday
+
+    app_module.date = _FixedDate
+
+    emps_doc = json.loads((tmp / "employees.json").read_text("utf-8"))
+    for emp in emps_doc["employees"]:
+        # emp_001 joined at the start of Oct; everyone else much later (no fill)
+        emp["added_on"] = "2026-10-01" if emp["id"] == "emp_001" else "2099-12-31"
+    (tmp / "employees.json").write_text(json.dumps(emps_doc), encoding="utf-8")
+
+    resp = client.get("/export?month=10&year=2026")
+    body = resp.data.decode("utf-8")
+    check("export page fills unmarked days", "Auto-filled 12" in body, body[:300])
+
+    att = json.loads((tmp / "attendance.json").read_text("utf-8"))["records"]
+    # Oct 1..16 minus Saturdays (3rd, 10th) minus the 3 already-marked days
+    expected_fill = {
+        f"2026-10-{day:02d}" for day in (4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16)
+    }
+    filled = {
+        k for k, v in att["emp_001"].items()
+        if v["status"] == "Absent" and k != "2026-10-03"
+    }
+    check("fill covers exactly the unmarked working days", filled == expected_fill,
+          f"extra={sorted(filled - expected_fill)} missing={sorted(expected_fill - filled)}")
+    check("Saturdays are never auto-filled", "2026-10-10" not in att["emp_001"])
+    check("existing marks never overwritten",
+          att["emp_001"]["2026-10-01"]["status"] == "Present"
+          and att["emp_001"]["2026-10-01"]["hours"] == 7.5)
+    check("not-yet-joined employee not filled", "emp_003" not in att)
+    check("filled record shape",
+          att["emp_001"]["2026-10-16"] == {"arrival": "", "hours": 0.0, "status": "Absent"},
+          str(att["emp_001"].get("2026-10-16")))
+
+    # ex employee: fill only up to their last marked day of the month -------
+    ex_sample = {
+        "employees": [{"id": "emp_004", "name": "Ex Guy", "active": False,
+                       "added_on": "2026-10-01"}],
+        "attendance": {"emp_004": {"2026-10-05": {"arrival": "09:00", "hours": 8,
+                                                  "status": "Present"}}},
+    }
+    resp = client.post("/import", data={
+        "file": (io.BytesIO(json.dumps(ex_sample).encode()), "ex.json"),
+    }, content_type="multipart/form-data", follow_redirects=True)
+    check("ex employee imported", "1 employee(s) added, 0 updated" in resp.data.decode("utf-8"))
+
+    resp = client.get("/export?month=10&year=2026")
+    check("second fill pass = only ex-employee days", "Auto-filled 3" in resp.data.decode("utf-8"))
+    att = json.loads((tmp / "attendance.json").read_text("utf-8"))["records"]
+    check("ex employee filled only up to last mark",
+          set(att["emp_004"]) == {"2026-10-01", "2026-10-02", "2026-10-04", "2026-10-05"},
+          str(sorted(att["emp_004"])))
+
+    # auto-absent can be corrected to approved leave ------------------------
+    out = save("2026-10-04", "", "0", "leave")
+    check("auto-absent day can be changed to approved leave", "2026-10-04: Leave" in out)
+
+    resp = client.get("/export/download?month=10&year=2026&format=csv")
+    text = resp.data.decode("utf-8-sig")
+    lines = [ln for ln in text.splitlines() if ln]
+    # header + emp_001 (15 Oct days) + emp_004 (4 days); emp_003 has none
+    check("final csv row count", len(lines) == 20, str(len(lines)))
+    check("final csv has Leave row", ",2026-10-04,Leave,0.0" in text.replace('"', ""))
+    check("final csv has auto Absent rows", ",2026-10-16,Absent,0.0" in text.replace('"', ""))
+
+    resp = client.get("/export/download?month=10&year=2026&format=xlsx")
+    wb2 = load_workbook(io.BytesIO(resp.data))
+    rows2 = list(wb2.active.iter_rows(values_only=True))
+    check("final xlsx row count", len(rows2) == 20, str(len(rows2)))
+    leave_cells = [r for r in wb2.active.iter_rows(min_row=2) if r[5].value == "Leave"]
+    check("xlsx Leave row colour", leave_cells and leave_cells[0][5].fill.fgColor.rgb.endswith("DDEBF7"))
 
     # report --------------------------------------------------------------
     failed = [r for r in results if not r[1]]

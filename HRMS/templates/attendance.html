@@ -26,6 +26,14 @@
         <input type="date" id="day" name="day" value="{{ selected_day }}" required>
       </div>
       <div>
+        <label for="day_type">Day type</label>
+        <select id="day_type" name="day_type">
+          <option value="worked">Worked (auto status)</option>
+          <option value="leave">Approved leave</option>
+          <option value="absent">Absent</option>
+        </select>
+      </div>
+      <div>
         <label for="arrival">Arrival time</label>
         <input type="time" id="arrival" name="arrival">
       </div>
@@ -38,10 +46,8 @@
     <div id="existing" class="warnbox"></div>
 
     <div style="display:flex; align-items:center; gap:16px; margin-top:14px">
-      <label style="margin:0; display:flex; align-items:center; gap:6px; font-size:14px; color:var(--ink)">
-        <input type="checkbox" id="absent" name="absent" style="width:auto"> Mark absent (no arrival / 0 hours)
-      </label>
       <button type="submit">Save attendance</button>
+      <span class="hint" style="margin:0">Pick <b>Approved leave</b> or <b>Absent</b> and arrival/hours are cleared automatically.</span>
     </div>
   </form>
 </div>
@@ -50,18 +56,26 @@
   <h2>How it works</h2>
   <ul style="font-size:14px; line-height:1.8; margin:0; padding-left:20px">
     <li>Date defaults to today - change it to back-fill a past day. You will see a warning if that day already has data.</li>
-    <li>Status is automatic: <b>Present</b> (arrival up to {{ late_time }}), <b>Late</b> (after it), or <b>Absent</b> if you tick the box.</li>
+    <li>Status is automatic for worked days: <b>Present</b> (arrival up to {{ late_time }}), <b>Late</b> (after it). Or explicitly mark <b>Approved leave</b> / <b>Absent</b>.</li>
     <li>Everyone is listed (ex employees shown with an <b>(ex)</b> tag) so you can back-fill their last days; ex employees keep their records and still appear in exports.</li>
+    <li>Any working day you never mark is filled as <b>Absent</b> automatically when you open the Export page (off days like Saturday are skipped - see <code>data/config.json</code>).</li>
   </ul>
 </div>
 
 <script>
 const empSel = document.getElementById('emp_id');
 const dayInput = document.getElementById('day');
+const dayType = document.getElementById('day_type');
 const arrivalInput = document.getElementById('arrival');
 const hoursInput = document.getElementById('hours');
-const absentBox = document.getElementById('absent');
 const existingBox = document.getElementById('existing');
+
+function syncFields() {
+  const worked = dayType.value === 'worked';
+  arrivalInput.disabled = !worked;
+  hoursInput.disabled = !worked;
+  if (!worked) { arrivalInput.value = ''; hoursInput.value = ''; }
+}
 
 async function checkExisting() {
   const emp = empSel.value, day = dayInput.value;
@@ -78,12 +92,16 @@ async function checkExisting() {
         (r.arrival ? `, arrival ${r.arrival}` : '') + `, ${r.hours} h - saving will update it.`;
       arrivalInput.value = r.arrival || '';
       hoursInput.value = r.hours || '';
-      absentBox.checked = r.status === 'Absent';
+      if (r.status === 'Leave') dayType.value = 'leave';
+      else if (r.status === 'Absent') dayType.value = 'absent';
+      else dayType.value = 'worked';
     }
   } catch (e) { /* server not reachable; ignore */ }
 }
+dayType.addEventListener('change', syncFields);
 empSel.addEventListener('change', checkExisting);
 dayInput.addEventListener('change', checkExisting);
+syncFields();
 if (empSel.value) checkExisting();
 </script>
 {% endblock %}
