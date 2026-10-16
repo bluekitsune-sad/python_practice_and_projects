@@ -85,6 +85,9 @@ def _save(filename: str, data) -> None:
 def load_config() -> dict:
     cfg = _load("config.json", {})
     cfg.setdefault("LATE_TIME", "22:00")
+    # End of the office shift (the app's office runs nights: 22:00 -> 05:00).
+    # Arriving after LATE_TIME but at/before OFFICE_END (next morning) is Late.
+    cfg.setdefault("OFFICE_END", "05:00")
     # Weekday names that are never auto-marked absent (e.g. ["Saturday"] or
     # ["Saturday", "Sunday"]). Edited on the Settings page (or by hand in the file).
     cfg.setdefault("OFF_DAYS", ["Saturday"])
@@ -136,8 +139,18 @@ def to_minutes(hhmm: str) -> int:
     return int(hours) * 60 + int(minutes)
 
 
-def attendance_status(arrival: str, late_time: str) -> str:
-    return "Late" if to_minutes(arrival) > to_minutes(late_time) else "Present"
+def attendance_status(arrival: str, late_time: str, office_end: str = "05:00") -> str:
+    """Status for a worked day.
+
+    Late = arriving after `late_time`; for shifts that wrap midnight (the office
+    runs 22:00 -> 05:00) any arrival from `late_time`+1min up to and including
+    `office_end` is also Late. Times outside that window are early / on-time.
+    """
+    arrival_min = to_minutes(arrival)
+    start = to_minutes(late_time)
+    end = to_minutes(office_end)
+    late = arrival_min > start or (start > end and arrival_min <= end)
+    return "Late" if late else "Present"
 
 
 def normalize_time(value: str) -> str | None:
@@ -485,7 +498,9 @@ def attendance_page():
                         record = {
                             "arrival": arrival,
                             "hours": hours,
-                            "status": attendance_status(arrival, cfg["LATE_TIME"]),
+                            "status": attendance_status(
+                                arrival, cfg["LATE_TIME"], cfg.get("OFFICE_END", "05:00")
+                            ),
                         }
 
         if error:
@@ -505,6 +520,7 @@ def attendance_page():
         selected_emp=request.args.get("emp_id", ""),
         selected_day=request.args.get("day") or date.today().isoformat(),
         late_time=cfg["LATE_TIME"],
+        office_end=cfg["OFFICE_END"],
     )
 
 
@@ -514,6 +530,32 @@ def api_attendance():
     day = request.args.get("date", "")
     record = load_attendance().get(emp_id, {}).get(day)
     return jsonify({"found": record is not None, "record": record or {}})
+
+
+@app.post("/api/attendance/status")
+def api_set_status():
+    """Cycle an attendance status from the day-detail table (no page reload)."""
+    payload = request.get_json(silent=True) or {}
+    emp_id = str(payload.get("emp_id", "")).strip()
+    day = str(payload.get("day", "")).strip()
+    status = str(payload.get("status", "")).strip()
+    if status not in STATUSES:
+        return jsonify(error=f"status must be one of {', '.join(STATUSES)}"), 400
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        return jsonify(error="date must be YYYY-MM-DD"), 400
+    if not any(str(e.get("id")) == emp_id for e in load_employees()):
+        return jsonify(error=f"employee {emp_id} not found"), 404
+    records = load_attendance()
+    rec = records.get(emp_id, {}).get(day) or {"arrival": "", "hours": 0.0}
+    rec["status"] = status
+    if status in ("Absent", "Leave"):
+        rec["arrival"] = ""
+        rec["hours"] = 0.0
+    records.setdefault(emp_id, {})[day] = rec
+    save_attendance(records)
+    return jsonify(ok=True, record=rec)
 
 
 @app.route("/export")
@@ -542,6 +584,7 @@ def export_page():
         today=today,
         off_days=off_days,
         late_time=load_config()["LATE_TIME"],
+        office_end=load_config()["OFFICE_END"],
     )
 
 
@@ -653,7 +696,7 @@ def import_page():
                 if status not in STATUSES:
                     arrival = str(rec.get("arrival", "")).strip()
                     status = (
-                        attendance_status(arrival, cfg["LATE_TIME"])
+                        attendance_status(arrival, cfg["LATE_TIME"], cfg.get("OFFICE_END", "05:00"))
                         if arrival else "Absent"
                     )
                 try:
@@ -1072,28 +1115,37 @@ def day_page(day: str):
 
 @app.route("/settings", methods=["GET", "POST"])
 def settings_page():
-    """Edit data/config.json from the web: LATE_TIME + OFF_DAYS."""
+    """Edit data/config.json from the web: LATE_TIME + OFFICE_END + OFF_DAYS."""
     cfg = load_config()
     late_val = str(cfg.get("LATE_TIME", "22:00"))
+    end_val = str(cfg.get("OFFICE_END", "05:00"))
     off_days = [str(d) for d in cfg.get("OFF_DAYS", [])]
     if request.method == "POST":
         late_val = (request.form.get("late_time") or "").strip()
+        end_val = (request.form.get("office_end") or "").strip()
         off_days = [d for d in WEEKDAYS if request.form.get(f"off_{d}")]
         normalized = normalize_time(late_val)
-        if normalized is None:
-            flash("Late time must be a valid time between 00:00 and 23:59 (e.g. 22:00).", "error")
+        normalized_end = normalize_time(end_val)
+        if normalized is None or normalized_end is None:
+            flash("Office times must be valid HH:MM values between 00:00 and 23:59.", "error")
         else:
             cfg["LATE_TIME"] = normalized
+            cfg["OFFICE_END"] = normalized_end
             cfg["OFF_DAYS"] = off_days
             _save("config.json", cfg)
             flash(
-                f"Settings saved - late after {normalized}; "
+                f"Settings saved - office {normalized} -> {normalized_end} "
+                f"(late after {normalized}); "
                 f"off days: {', '.join(off_days) or 'none'}.",
                 "ok",
             )
             return redirect(url_for("settings_page"))
     return render_template(
-        "settings.html", late_val=late_val, off_days=off_days, weekdays=WEEKDAYS
+        "settings.html",
+        late_val=late_val,
+        end_val=end_val,
+        off_days=off_days,
+        weekdays=WEEKDAYS,
     )
 
 

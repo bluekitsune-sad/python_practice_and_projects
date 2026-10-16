@@ -58,6 +58,14 @@ def main() -> int:
     check("on-time -> Present", "Saved emp_001 on 2026-10-01: Present." in out)
     out = save("2026-10-02", "22:30", "8")
     check("after 22:00 -> Late", "Late" in out)
+    # office timing 22:00 -> 05:00 (night shift): the early-morning hours are
+    # INSIDE the shift, so 02:30 / 05:00 are Late; 06:00 is early again.
+    out = save("2026-07-05", "02:30", "8")
+    check("night shift: 02:30 arrival -> Late", "2026-07-05: Late" in out, out[:200])
+    out = save("2026-07-06", "05:00", "8")
+    out2 = save("2026-07-07", "06:00", "8")
+    check("night shift edge: 05:00 Late, 06:00 Present",
+          "2026-07-06: Late" in out and "2026-07-07: Present" in out2, out + " | " + out2)
     out = save("2026-10-03", "", "0", "absent")
     check("absent saved", "Absent" in out)
     out = save("2026-09-15", "", "0", "leave")
@@ -329,7 +337,7 @@ def main() -> int:
     body = resp.data.decode("utf-8")
     check("day detail -> 200 + heading", resp.status_code == 200 and "14 October 2026" in body)
     check("day detail: attendance row + status badge",
-          "<code>emp_001</code>" in body and 'class="badge Absent"' in body)
+          "<code>emp_001</code>" in body and 'class="badge cycle Absent"' in body)
     check("day detail: chips show count + amount",
           'id="day-count">1<' in body and 'id="day-total">1,500.50<' in body)
     check("day detail: footer covers ALL of the day's transactions",
@@ -347,6 +355,36 @@ def main() -> int:
     body = client.get("/calendar?month=10&year=2026").data.decode("utf-8")
     check("calendar day cells link to the day view",
           'href="/calendar/2026-10-14"' in body)
+
+    # status cycling straight from the day table ---------------------------
+    body = client.get("/calendar/2026-10-14").data.decode("utf-8")
+    check("day table has the status-toggle button",
+          'id="status-toggle"' in body and 'data-status="Absent"' in body)
+    resp = client.post("/api/attendance/status",
+                       json={"emp_id": "emp_001", "day": "2026-10-14", "status": "Leave"})
+    check("status change via API -> ok",
+          resp.status_code == 200 and resp.get_json().get("record", {}).get("status") == "Leave")
+    check("status change saved to JSON",
+          json.loads((tmp / "attendance.json").read_text("utf-8"))
+          ["records"]["emp_001"]["2026-10-14"]["status"] == "Leave")
+    body = client.get("/calendar/2026-10-14").data.decode("utf-8")
+    check("day table shows the new status", 'data-status="Leave"' in body)
+    resp = client.post("/api/attendance/status",
+                       json={"emp_id": "emp_001", "day": "2026-10-20", "status": "Present"})
+    check("clicking an unmarked row creates the record",
+          resp.status_code == 200
+          and json.loads((tmp / "attendance.json").read_text("utf-8"))
+          ["records"]["emp_001"]["2026-10-20"]["status"] == "Present")
+    client.post("/api/attendance/status",
+                json={"emp_id": "emp_001", "day": "2026-10-14", "status": "Absent"})  # restore
+    check("invalid status rejected",
+          client.post("/api/attendance/status",
+                      json={"emp_id": "emp_001", "day": "2026-10-14", "status": "Sick"}
+                      ).status_code == 400)
+    check("unknown employee rejected",
+          client.post("/api/attendance/status",
+                      json={"emp_id": "emp_999", "day": "2026-10-14", "status": "Present"}
+                      ).status_code == 404)
 
     # employee edit ---------------------------------------------------------
     resp = client.get("/employees/emp_001/edit")
@@ -374,38 +412,53 @@ def main() -> int:
                        follow_redirects=True).data.decode("utf-8")
     check("edit of unknown employee", "not found" in body)
 
-    # settings: late time + off days edited from the web --------------------
+    # settings: office timing + off days edited from the web ---------------
     resp = client.get("/settings")
     body = resp.data.decode("utf-8")
     check("GET /settings -> 200", resp.status_code == 200)
     check("settings shows current values",
-          'value="22:00"' in body and "Saturday" in body)
+          'value="22:00"' in body and 'id="office_end"' in body and "Saturday" in body)
     body = client.post("/settings", data={
-        "late_time": "09:00", "off_Saturday": "on", "off_Sunday": "on",
+        "late_time": "09:00", "office_end": "06:00",
+        "off_Saturday": "on", "off_Sunday": "on",
     }, follow_redirects=True).data.decode("utf-8")
     cfg = json.loads((tmp / "config.json").read_text("utf-8"))
     check("settings saved to config.json",
           "Settings saved" in body and cfg.get("LATE_TIME") == "09:00"
+          and cfg.get("OFFICE_END") == "06:00"
           and set(cfg.get("OFF_DAYS", [])) == {"Saturday", "Sunday"}, str(cfg))
     body = client.get("/attendance").data.decode("utf-8")
-    check("late time applies on the attendance page",
-          "Late time is set to <b>09:00</b>" in body)
+    check("office timing applies on the attendance page",
+          "Office timing: <b>09:00</b> &rarr; <b>06:00</b>" in body)
     out = client.post("/attendance", data={
         "emp_id": "emp_001", "day": "2026-10-13", "arrival": "09:30",
         "hours": "8", "day_type": "worked",
     }, follow_redirects=True).data.decode("utf-8")
     check("new late time drives the status (09:30 now Late)",
           "2026-10-13: Late" in out, out[:200])
+    # widen the office end -> 07:30 becomes Late too (night shift 22:00-08:00)
+    client.post("/settings", data={
+        "late_time": "22:00", "office_end": "08:00", "off_Saturday": "on"},
+        follow_redirects=True)
+    out = client.post("/attendance", data={
+        "emp_id": "emp_001", "day": "2026-07-09", "arrival": "07:30",
+        "hours": "8", "day_type": "worked",
+    }, follow_redirects=True).data.decode("utf-8")
+    check("office end extends the late window (07:30 with 22:00-08:00)",
+          "2026-07-09: Late" in out, out[:200])
     body = client.post("/settings", data={"late_time": "25:00"},
                        follow_redirects=True).data.decode("utf-8")
     cfg = json.loads((tmp / "config.json").read_text("utf-8"))
-    check("invalid late time rejected",
-          "must be a valid time" in body and cfg.get("LATE_TIME") == "09:00", str(cfg))
-    client.post("/settings", data={"late_time": "22:00", "off_Saturday": "on"},
-                follow_redirects=True)
+    check("invalid office times rejected",
+          "must be valid HH:MM" in body and cfg.get("LATE_TIME") == "22:00"
+          and cfg.get("OFFICE_END") == "08:00", str(cfg))
+    client.post("/settings", data={
+        "late_time": "22:00", "office_end": "05:00", "off_Saturday": "on"},
+        follow_redirects=True)
     cfg = json.loads((tmp / "config.json").read_text("utf-8"))
-    check("settings restored (22:00, Saturday only)",
-          cfg.get("LATE_TIME") == "22:00" and cfg.get("OFF_DAYS") == ["Saturday"], str(cfg))
+    check("settings restored (office 22:00-05:00, Saturday only)",
+          cfg.get("LATE_TIME") == "22:00" and cfg.get("OFFICE_END") == "05:00"
+          and cfg.get("OFF_DAYS") == ["Saturday"], str(cfg))
 
     # report --------------------------------------------------------------
     failed = [r for r in results if not r[1]]

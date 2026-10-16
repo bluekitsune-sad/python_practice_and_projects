@@ -21,6 +21,14 @@
   }
   td.txn { font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
   th.txn { text-align:right; }
+  .table-top { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; }
+  .table-top h2 { margin:0; }
+  .table-top .side { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  #status-toggle.on { background:var(--accent); color:var(--accent-ink); border:1px solid transparent; }
+  .badge.cycle { cursor:default; }
+  .badge.cycle.none { background:rgba(234,255,210,.08); color:var(--muted); }
+  body.status-edit .badge.cycle { cursor:pointer; outline:1px dashed rgba(159,220,86,.65); outline-offset:2px; }
+  body.status-edit .badge.cycle:hover { filter:brightness(1.3); transform:scale(1.04); }
 </style>
 {% endblock %}
 {% block content %}
@@ -53,9 +61,18 @@
 {% endif %}
 
 <div class="card">
-  <h2>Attendance ({{ rows|length }})</h2>
+  <div class="table-top">
+    <h2>Attendance ({{ rows|length }})</h2>
+    <div class="side">
+      <span class="hint" style="margin:0" id="status-hint">
+        Switch status editing ON, then click any status to cycle it
+        (Present &rarr; Late &rarr; Absent &rarr; Leave &rarr; ...) - saved instantly.
+      </span>
+      <button id="status-toggle" class="small ghost" type="button">Status editing: OFF</button>
+    </div>
+  </div>
   {% if rows %}
-  <table>
+  <table style="margin-top:14px">
     <thead>
       <tr>
         <th>ID</th><th>Name</th><th>Department</th><th>Status</th>
@@ -69,8 +86,14 @@
         <td>{{ r.emp.name }}{% if not r.emp.active %} <span class="badge ex">ex</span>{% endif %}</td>
         <td>{{ r.emp.get('department', '') or '—' }}</td>
         <td>
-          {% if r.rec %}<span class="badge {{ r.rec.get('status', '') }}">{{ r.rec.get('status', '—') }}</span>
-          {% else %}<span class="muted">—</span>{% endif %}
+          {% if r.rec %}
+          <span class="badge cycle {{ r.rec.get('status', '') }}"
+                data-status="{{ r.rec.get('status', '') }}"
+                data-emp="{{ r.emp.id }}" data-day="{{ day.isoformat() }}">{{ r.rec.get('status', '—') }}</span>
+          {% else %}
+          <span class="badge cycle none" data-status=""
+                data-emp="{{ r.emp.id }}" data-day="{{ day.isoformat() }}">—</span>
+          {% endif %}
         </td>
         <td>{{ r.rec.get('arrival', '') if r.rec and r.rec.get('arrival') else '—' }}</td>
         <td>{{ r.rec.get('hours', 0) if r.rec and r.rec.get('hours') else '—' }}</td>
@@ -99,4 +122,37 @@
   </p>
   {% endif %}
 </div>
+
+<script>
+const CYCLE = ['Present', 'Late', 'Absent', 'Leave'];
+let editing = false;
+const btn = document.getElementById('status-toggle');
+
+btn.addEventListener('click', () => {
+  editing = !editing;
+  document.body.classList.toggle('status-edit', editing);
+  btn.textContent = editing ? 'Status editing: ON' : 'Status editing: OFF';
+  btn.classList.toggle('on', editing);
+});
+
+document.querySelectorAll('.badge.cycle').forEach(badge => {
+  badge.addEventListener('click', async () => {
+    if (!editing) return;
+    const cur = badge.dataset.status;
+    const next = cur ? CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length] : CYCLE[0];
+    const res = await fetch('/api/attendance/status', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({emp_id: badge.dataset.emp, day: badge.dataset.day, status: next}),
+    });
+    if (res.ok) {
+      badge.dataset.status = next;
+      badge.className = 'badge cycle ' + next;
+      badge.textContent = next;
+    } else {
+      alert('Could not save the status change.');
+    }
+  });
+});
+</script>
 {% endblock %}

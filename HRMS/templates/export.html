@@ -53,7 +53,9 @@
       in <a class="inline" href="{{ url_for('settings_page') }}">Settings</a> (or edit
       <code>OFF_DAYS</code> in <code>data/config.json</code>).</li>
     <li><b>Ex employees:</b> only up to the last day they were marked in this month.</li>
-    <li>Late after <b>{{ late_time }}</b> (<a class="inline" href="{{ url_for('settings_page') }}">Settings</a>); statuses are Present / Late / Absent / Leave.</li>
+    <li>Late after <b>{{ late_time }}</b>, or any time up to <b>{{ office_end }}</b> next morning
+      (office {{ late_time }} &rarr; {{ office_end }} - set in
+      <a class="inline" href="{{ url_for('settings_page') }}">Settings</a>); statuses are Present / Late / Absent / Leave.</li>
   </ul>
 </div>
 

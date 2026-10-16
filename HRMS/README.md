@@ -36,14 +36,14 @@ flowchart LR
 |------|--------------|
 | **Home** | Counts (employees, attendance, transactions) + quick start. |
 | **Employees** | Add employees (ID `emp_001`, `emp_002`... auto-generated). Department and designation are optional. **Edit** fixes the name / department / designation / join date (the ID never changes). `Mark ex` keeps the person out of active use but preserves all history; `Delete` removes the person **and** their attendance records (confirmation prompt). |
-| **Attendance** | Pick employee + date (defaults to today) and a **day type**: *Worked* (enter arrival time + hours; status is automatic - **Present** at/before the late time, **Late** after), *Approved leave*, or *Absent*. Re-opening a date that has data shows an orange warning and prefills it. |
+| **Attendance** | Pick employee + date (defaults to today) and a **day type**: *Worked* (enter arrival time + hours; status is automatic - **Present** if you arrive by the office start, **Late** after it, including the early-morning hours up to the office end), *Approved leave*, or *Absent*. Re-opening a date that has data shows an orange warning and prefills it. |
 | **Transactions** | Save an **image/receipt + name + date + amount + client (optional)**. Search by **month + year** (see count, total amount and **how many people** transacted that month) or by **person for their complete history**. Delete removes the record and its image. |
 | **Calendar** | Month grid: every day cell shows that day's **total transactions (all names)** and **attendance %**; beside the month name sit the **month's attendance %** and **month total**. Prev/Next navigation, off days dashed, today highlighted. **Click any day** to open its detail page. |
-| **Day detail** | `/calendar/<date>` - that day's **complete attendance in a table** (ID, name, department, status badge, arrival, hours) with a **Transactions column** (count + amount per person) and a **Day total row** for all transactions. Prev-day / month / next-day links; off-day and future-date banners. |
+| **Day detail** | `/calendar/<date>` - that day's **complete attendance in a table** (ID, name, department, status badge, arrival, hours) with a **Transactions column** (count + amount per person) and a **Day total row** for all transactions. A **Status editing** button (top-right) lets you click any status to cycle it `Present → Late → Absent → Leave` - saved instantly. Prev-day / month / next-day links; off-day and future-date banners. |
 | **Totals** | Dashboard: KPI cards (all-time amount, this month, people, count), a **bar chart** of the last 12 months, a **donut** of top people by amount and the recent transactions. |
 | **Export** | Choose month + year, download the attendance CSV or XLSX. Opening this page also **saves** the auto-absents (see below). |
 | **Import** | Upload a correctly formatted `.json` file to bulk add/update employees and attendance. Nothing is ever deleted by an import. |
-| **Settings** | Edit `LATE_TIME` (after this time an arrival = `Late`) and tick the `OFF_DAYS` - saved to `data/config.json`, no file editing needed. Invalid times are rejected. |
+| **Settings** | The **office timing** - start (`LATE_TIME`) and end (`OFFICE_END`, next morning) - plus the `OFF_DAYS` checkboxes. Saved to `data/config.json`, no file editing needed; invalid times are rejected. |
 
 ## Transactions
 
@@ -116,6 +116,10 @@ Every day cell links to `/calendar/<YYYY-MM-DD>` - the **day detail** page:
   list are listed below the table (still included in the day total).
 - Off-day and future-date banners, and `‹ prev day` / `Month view` / `next day ›` links.
 - Opening a day runs the same auto-absent fill for that month first.
+- **Status editing**: click the **Status editing** button at the top-right of the table,
+  then click any status badge to cycle it (`Present → Late → Absent → Leave → ...`) -
+  each click saves instantly (no page reload). An unmarked `—` becomes a `Present` record.
+  `Absent` / `Leave` clear the arrival + hours, exactly like the attendance form.
 
 ## Attendance: unmarked day = Absent (automatic)
 
@@ -144,18 +148,35 @@ flowchart TD
 
 ## The settings constants
 
-Both live in `data/config.json` and are edited from the web on the **Settings** page
+All three live in `data/config.json` and are edited from the web on the **Settings** page
 (nav bar) - no need to touch the file by hand (though you still can):
 
 ```json
-{ "LATE_TIME": "22:00", "OFF_DAYS": ["Saturday"] }
+{ "LATE_TIME": "22:00", "OFFICE_END": "05:00", "OFF_DAYS": ["Saturday"] }
 ```
 
-- `LATE_TIME` - arrival after this time (24h clock, `HH:MM`, must be `00:00`-`23:59`) =
-  status `Late`. Applies to marks saved **after** the change; saved records keep their status.
+- `LATE_TIME` - the office **start**: arriving after this time = status `Late`.
+- `OFFICE_END` - the office **end** the next morning. The office runs nights
+  (**10:00 PM → 5:00 AM**), so an arrival between `LATE_TIME` and `OFFICE_END`
+  (crossing midnight) is Late as well:
+
+  | Arrival | Status | Why |
+  |---|---|---|
+  | 21:30 | Present | before the shift starts |
+  | 22:00 | Present | exactly on time |
+  | 22:30 | Late | after the start |
+  | 02:30 | Late | inside the shift, but after the start |
+  | 05:00 | Late | the cut-off counts as Late |
+  | 06:00 | Present | outside the window (early for tonight) |
+
+  (Day-shift style configs, where the start is *before* the end - e.g. 09:00-17:00 - keep
+  the simple "after the start = Late" rule.)
 - `OFF_DAYS` - weekday names (English, as in `strftime("%A")`) never auto-marked absent.
   The Settings page lists all seven days as checkboxes; untick every day to disable the
   auto-absent fill entirely.
+
+Only marks saved **after** a settings change are judged by the new times; records already
+saved keep the status they had.
 
 ## Export files (tested against Google Sheets)
 
@@ -242,7 +263,7 @@ palette (bars in lime, current month in pale).
 python smoke_test.py
 ```
 
-110 end-to-end checks against a temporary data folder (your real data is not touched).
+120 end-to-end checks against a temporary data folder (your real data is not touched).
 
 ## Not included (on purpose)
 

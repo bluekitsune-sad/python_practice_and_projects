@@ -18,11 +18,19 @@
   <form method="post">
     <div class="row">
       <div>
-        <label for="late_time">Late after this time (HH:MM, 24h)</label>
+        <label for="late_time">Office starts at - late after this time (HH:MM)</label>
         <input type="time" id="late_time" name="late_time" value="{{ late_val }}" required>
         <p class="hint" style="margin-top:8px">
           Arriving after <b>{{ late_val or 'the entered time' }}</b> = status <b>Late</b>.
-          Earlier (or exactly on time) = <b>Present</b>.
+          On time or earlier = <b>Present</b>.
+        </p>
+      </div>
+      <div>
+        <label for="office_end">Office ends at (next morning, HH:MM)</label>
+        <input type="time" id="office_end" name="office_end" value="{{ end_val }}" required>
+        <p class="hint" style="margin-top:8px">
+          Night shift: an arrival any time up to <b>{{ end_val or 'the entered time' }}</b>
+          is <b>Late</b> as well. Times outside the window count as early / on time.
         </p>
       </div>
       <div style="flex:2">

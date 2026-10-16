@@ -4,8 +4,10 @@
 <div class="card">
   <h2>Mark attendance</h2>
   <p class="hint" style="margin-top:0">
-    Late time is set to <b>{{ late_time }}</b> (<a class="inline" href="{{ url_for('settings_page') }}">change it in Settings</a>).
-    Later arrival = status <b>Late</b>. Saving over an existing date updates it.
+    Office timing: <b>{{ late_time }}</b> &rarr; <b>{{ office_end }}</b>
+    (<a class="inline" href="{{ url_for('settings_page') }}">change it in Settings</a>).
+    Arriving after <b>{{ late_time }}</b>, or any time up to <b>{{ office_end }}</b> next
+    morning, = status <b>Late</b>. Saving over an existing date updates it.
   </p>
 
   <form method="post">
@@ -56,7 +58,7 @@
   <h2>How it works</h2>
   <ul style="font-size:14px; line-height:1.8; margin:0; padding-left:20px">
     <li>Date defaults to today - change it to back-fill a past day. You will see a warning if that day already has data.</li>
-    <li>Status is automatic for worked days: <b>Present</b> (arrival up to {{ late_time }}), <b>Late</b> (after it). Or explicitly mark <b>Approved leave</b> / <b>Absent</b>.</li>
+    <li>Status is automatic for worked days: <b>Present</b> (arrive by {{ late_time }}, or before {{ office_end }} the next morning), <b>Late</b> (after {{ late_time }} up to {{ office_end }}). Or explicitly mark <b>Approved leave</b> / <b>Absent</b>.</li>
     <li>Everyone is listed (ex employees shown with an <b>(ex)</b> tag) so you can back-fill their last days; ex employees keep their records and still appear in exports.</li>
     <li>Any working day you never mark is filled as <b>Absent</b> automatically when you open the Export or Calendar page (off days like Saturday are skipped - choose them in <a class="inline" href="{{ url_for('settings_page') }}">Settings</a>).</li>
   </ul>
