@@ -4,3 +4,5 @@ data/*.tmp
 # real data stays local - never pushed to GitHub
 data/employees.json
 data/attendance.json
+data/transactions.json
+data/uploads/

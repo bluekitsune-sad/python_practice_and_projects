@@ -1,6 +1,7 @@
-"""HRMS - a small Flask app for employees, attendance and monthly exports.
+"""HRMS - a small Flask app for employees, attendance, transactions and exports.
 
-Storage is plain JSON files in the data/ folder. No login, no database.
+Storage is plain JSON files in the data/ folder, transaction images live in
+data/uploads/. No login, no database.
 
 Run:  python app.py   ->   http://127.0.0.1:5000
 """
@@ -11,6 +12,7 @@ import calendar
 import csv
 import io
 import json
+import math
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -22,6 +24,7 @@ from flask import (
     render_template,
     request,
     send_file,
+    send_from_directory,
     url_for,
 )
 from openpyxl import Workbook
@@ -41,10 +44,16 @@ MONTH_NAMES = [
 EXPORT_HEADERS = [
     "Employee ID", "Name", "Department", "Designation", "Date", "Status", "Hours",
 ]
+# transaction images: whitelist of extensions + size cap (also enforced by
+# MAX_CONTENT_LENGTH below). Files are stored as txn_001.png etc. - the
+# client's filename is never used, so uploads cannot escape the folder.
+UPLOAD_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
 app = Flask(__name__)
 # secret_key is only used for one-shot flash messages; there is no login.
 app.secret_key = "hrms-local-only"
+app.config["MAX_CONTENT_LENGTH"] = MAX_IMAGE_BYTES
 
 
 # ------------------------------------------------------------------ storage --
@@ -95,6 +104,20 @@ def save_attendance(records: dict) -> None:
     _save("attendance.json", {"records": records})
 
 
+def load_transactions() -> list[dict]:
+    return _load("transactions.json", {"transactions": []}).get("transactions", [])
+
+
+def save_transactions(items: list[dict]) -> None:
+    _save("transactions.json", {"transactions": items})
+
+
+def upload_dir() -> Path:
+    folder = DATA_DIR / "uploads"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
 # ----------------------------------------------------------------- helpers --
 def next_employee_id(employees: list[dict]) -> str:
     used = []
@@ -112,6 +135,54 @@ def to_minutes(hhmm: str) -> int:
 
 def attendance_status(arrival: str, late_time: str) -> str:
     return "Late" if to_minutes(arrival) > to_minutes(late_time) else "Present"
+
+
+def next_transaction_id(items: list[dict]) -> str:
+    used = []
+    for txn in items:
+        txn_id = str(txn.get("id", ""))
+        if txn_id.startswith("txn_") and txn_id[4:].isdigit():
+            used.append(int(txn_id[4:]))
+    return f"txn_{(max(used) + 1) if used else 1:03d}"
+
+
+def transaction_filters() -> tuple[int, int, str]:
+    """month (0 = all), year (0 = all), name query from the request."""
+    raw_month = request.args.get("month", "")
+    raw_year = request.args.get("year", "")
+    name = (request.args.get("name", "") or "").strip()
+    try:
+        month = int(raw_month) if raw_month else 0
+    except ValueError:
+        month = 0
+    try:
+        year = int(raw_year) if raw_year else 0
+    except ValueError:
+        year = 0
+    if month and not 1 <= month <= 12:
+        month = 0
+    if year and not 2000 <= year <= 2100:
+        year = 0
+    return month, year, name
+
+
+def filter_transactions(items: list[dict], month: int, year: int, name: str) -> list[dict]:
+    """Filtered, newest first. Name is a case-insensitive substring match."""
+    out = []
+    for txn in items:
+        try:
+            day = date.fromisoformat(str(txn.get("date", "")))
+        except ValueError:
+            continue
+        if month and day.month != month:
+            continue
+        if year and day.year != year:
+            continue
+        if name and name.lower() not in str(txn.get("name", "")).lower():
+            continue
+        out.append(txn)
+    out.sort(key=lambda t: (str(t.get("date", "")), str(t.get("id", ""))), reverse=True)
+    return out
 
 
 def export_rows(year: int, month: int) -> list[list]:
@@ -257,11 +328,14 @@ def index():
     employees = load_employees()
     records = load_attendance()
     total_records = sum(len(days) for days in records.values())
+    txns = load_transactions()
     return render_template(
         "index.html",
         active=sum(1 for e in employees if e.get("active", True)),
         ex=len(employees) - sum(1 for e in employees if e.get("active", True)),
         total_records=total_records,
+        txn_count=len(txns),
+        txn_amount=sum(_amount(t) for t in txns),
     )
 
 
@@ -559,6 +633,207 @@ def import_page():
     for note in skipped[:10]:
         flash(f"Skipped: {note}", "error")
     return redirect(url_for("import_page"))
+
+
+# ------------------------------------------------------------- transactions --
+def _amount(txn: dict) -> float:
+    try:
+        return float(txn.get("amount", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@app.route("/transactions", methods=["GET", "POST"])
+def transactions_page():
+    items = load_transactions()
+
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        day = (request.form.get("day") or "").strip()
+        client = (request.form.get("client") or "").strip()
+        amount_raw = (request.form.get("amount") or "").strip()
+        image = request.files.get("image")
+
+        error = None
+        if not name:
+            error = "Name is required."
+        try:
+            date.fromisoformat(day)
+        except ValueError:
+            error = error or "Date must be valid (YYYY-MM-DD)."
+        try:
+            amount = float(amount_raw)
+            if amount < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            amount = -1.0
+            error = error or "Amount must be a positive number."
+        ext = ""
+        if not image or not image.filename:
+            error = error or "An image is required."
+        else:
+            ext = Path(image.filename).suffix.lower()
+            if ext not in UPLOAD_EXTS:
+                error = error or (
+                    "Image must be one of: " + ", ".join(e.lstrip(".").upper() for e in sorted(UPLOAD_EXTS)) + "."
+                )
+
+        if error:
+            flash(error, "error")
+        else:
+            txn_id = next_transaction_id(items)
+            filename = f"{txn_id}{ext}"
+            image.save(upload_dir() / filename)
+            items.append({
+                "id": txn_id,
+                "name": name,
+                "date": day,
+                "amount": round(amount, 2),
+                "client": client,
+                "image": filename,
+            })
+            save_transactions(items)
+            flash(f"Added {txn_id} - {name}: {amount:,.2f}.", "ok")
+        return redirect(url_for("transactions_page"))
+
+    # filters: month + year + name (all optional, combinable)
+    month, year, name_q = transaction_filters()
+    view = filter_transactions(items, month, year, name_q)
+    summary = {
+        "count": len(view),
+        "amount": sum(_amount(t) for t in view),
+        "people": len({str(t.get("name", "")).strip().lower() for t in view
+                       if str(t.get("name", "")).strip()}),
+    }
+    names = {str(t.get("name", "")).strip() for t in items if str(t.get("name", "")).strip()}
+    names |= {e["name"] for e in load_employees() if e.get("name")}
+    years = {str(t.get("date", ""))[:4] for t in items if str(t.get("date", ""))[:4]}
+    years.add(str(date.today().year))
+    return render_template(
+        "transactions.html",
+        transactions=view,
+        summary=summary,
+        month=month,
+        year=year,
+        name_q=name_q,
+        months=MONTH_NAMES,
+        names=sorted(names),
+        years=sorted(years, reverse=True),
+        today=date.today().isoformat(),
+    )
+
+
+@app.post("/transactions/<txn_id>/delete")
+def transaction_delete(txn_id):
+    items = load_transactions()
+    target = next((t for t in items if t.get("id") == txn_id), None)
+    if target is None:
+        flash(f"Transaction {txn_id} not found.", "error")
+    else:
+        save_transactions([t for t in items if t.get("id") != txn_id])
+        image = str(target.get("image") or "")
+        if image:
+            (upload_dir() / Path(image).name).unlink(missing_ok=True)
+        flash(f"Deleted {txn_id} - {target.get('name', '')}.", "ok")
+    return redirect(url_for("transactions_page", **request.args.to_dict()))
+
+
+@app.get("/uploads/<filename>")
+def transaction_image(filename):
+    return send_from_directory(upload_dir(), filename)
+
+
+@app.errorhandler(413)
+def payload_too_large(_error):
+    flash(f"Image is too large (max {MAX_IMAGE_BYTES // (1024 * 1024)} MB).", "error")
+    return redirect(url_for("transactions_page"))
+
+
+# ----------------------------------------------------------------- dashboard --
+@app.get("/dashboard")
+def dashboard():
+    items = load_transactions()
+    today = date.today()
+    month_key = today.isoformat()[:7]
+
+    month_items = [t for t in items if str(t.get("date", "")).startswith(month_key)]
+    people_all = {str(t.get("name", "")).strip().lower() for t in items
+                  if str(t.get("name", "")).strip()}
+    clients_all = {str(t.get("client", "")).strip() for t in items
+                   if str(t.get("client", "")).strip()}
+    month_people = {str(t.get("name", "")).strip().lower() for t in month_items
+                    if str(t.get("name", "")).strip()}
+
+    # bar chart: last 12 months of amounts
+    per_key: dict[str, float] = {}
+    for txn in items:
+        key = str(txn.get("date", ""))[:7]
+        if len(key) == 7:
+            per_key[key] = per_key.get(key, 0.0) + _amount(txn)
+    keys = []
+    year, month = today.year, today.month
+    for _ in range(12):
+        keys.append(f"{year:04d}-{month:02d}")
+        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
+    keys.reverse()
+    peak = max(per_key.values(), default=0) or 1
+    bars = []
+    for key in keys:
+        amount = per_key.get(key, 0.0)
+        bars.append({
+            "label": calendar.month_abbr[int(key[5:7])],
+            "amount": amount,
+            "height": round(amount / peak * 100, 1),
+            "now": key == month_key,
+            "empty": amount == 0,
+        })
+
+    # donut: top 5 people by amount (+ Others)
+    by_person: dict[str, float] = {}
+    for txn in items:
+        label = str(txn.get("name", "")).strip() or "Unknown"
+        by_person[label] = by_person.get(label, 0.0) + _amount(txn)
+    ranked = sorted(by_person.items(), key=lambda kv: kv[1], reverse=True)
+    donut_src = list(ranked[:5])
+    others = sum(value for _, value in ranked[5:])
+    if others:
+        donut_src.append(("Others", others))
+    donut_total = sum(value for _, value in donut_src) or 1.0
+    palette = ["#9FDC56", "#545FFF", "#FF7366", "#EAFFD2", "#7BC142", "#4A5240"]
+    radius = 64
+    circumference = 2 * math.pi * radius
+    segments = []
+    passed = 0.0
+    for (label, amount), color in zip(donut_src, palette):
+        fraction = amount / donut_total
+        segments.append({
+            "label": label,
+            "amount": amount,
+            "color": color,
+            "pct": round(fraction * 100, 1),
+            "dash": f"{fraction * circumference:.2f} {circumference:.2f}",
+            "offset": round(-passed * circumference, 2),
+        })
+        passed += fraction
+
+    recent = sorted(items, key=lambda t: (str(t.get("date", "")), str(t.get("id", ""))),
+                    reverse=True)[:5]
+
+    return render_template(
+        "dashboard.html",
+        total_amount=sum(_amount(t) for t in items),
+        total_count=len(items),
+        people_count=len(people_all),
+        client_count=len(clients_all),
+        month_amount=sum(_amount(t) for t in month_items),
+        month_count=len(month_items),
+        month_people=len(month_people),
+        bars=bars,
+        segments=segments,
+        donut_total=donut_total,
+        recent=recent,
+        has_data=bool(items),
+    )
 
 
 if __name__ == "__main__":

@@ -5,62 +5,136 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}HRMS{% endblock %}</title>
 <style>
-  :root { --line:#e3e7ee; --ink:#1d2733; --muted:#68758a; --accent:#1f4e78; }
-  * { box-sizing:border-box; }
-  body { margin:0; font-family:Segoe UI, system-ui, -apple-system, sans-serif; color:var(--ink); background:#f4f6fa; }
-  header { background:var(--accent); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:28px; flex-wrap:wrap; }
-  header h1 { margin:0; font-size:20px; letter-spacing:.5px; }
-  nav a { color:#dfe9f5; text-decoration:none; margin-right:18px; font-size:15px; padding-bottom:4px; }
-  nav a:hover, nav a.active { color:#fff; border-bottom:2px solid #fff; }
-  main { max-width:1000px; margin:24px auto; padding:0 16px 48px; }
-  .flash { padding:10px 14px; border-radius:6px; margin:10px 0; font-size:14px; }
-  .flash.ok { background:#e4f4e6; color:#1d6b2d; border:1px solid #bfe3c5; }
-  .flash.error { background:#fdeaea; color:#a12626; border:1px solid #f3c2c2; }
-  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:20px; }
-  .card h2 { margin:0 0 14px; font-size:17px; }
-  label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
-  input[type=text], input[type=date], input[type=time], input[type=number], input[type=file], select {
-    width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:14px; background:#fff;
+  /* HRMS theme - dark green direction:
+     #9FDC56 accent | #EAFFD2 pale text | #FF7366 coral | #161815 base | #545FFF blue */
+  :root {
+    --bg:#161815;
+    --card:rgba(29,33,26,.92);
+    --card-solid:#1D211A;
+    --line:rgba(234,255,210,.10);
+    --ink:#EAFFD2;
+    --muted:#8E9B84;
+    --accent:#9FDC56;
+    --accent-dim:#7BC142;
+    --accent-ink:#161815;
+    --pale:#EAFFD2;
+    --coral:#FF7366;
+    --blue:#545FFF;
+    --amber:#E9C46A;
+    --radius:16px;
   }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; color:var(--ink);
+    font-family:"Neue Montreal", "Inter", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background:
+      radial-gradient(1100px 550px at 12% -8%, rgba(159,220,86,.16), transparent 60%),
+      radial-gradient(900px 500px at 112% 8%, rgba(84,95,255,.10), transparent 60%),
+      var(--bg);
+    min-height:100vh;
+  }
+  header {
+    display:flex; align-items:center; gap:26px; flex-wrap:wrap;
+    padding:16px 28px; margin:18px 20px 0; border-radius:999px;
+    background:rgba(24,27,21,.75); border:1px solid var(--line);
+    backdrop-filter:blur(8px);
+  }
+  .brand { display:flex; align-items:center; gap:10px; font-size:19px; font-weight:700; letter-spacing:.6px; }
+  .brand .mark {
+    width:0; height:0; display:inline-block;
+    border-left:9px solid transparent; border-right:9px solid transparent;
+    border-bottom:15px solid var(--accent);
+    filter:drop-shadow(0 0 6px rgba(159,220,86,.5));
+  }
+  nav { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+  nav a {
+    color:#A8B79A; text-decoration:none; font-size:14px; font-weight:500;
+    padding:8px 15px; border-radius:999px; transition:.15s;
+  }
+  nav a:hover { color:var(--ink); background:rgba(234,255,210,.06); }
+  nav a.active { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+  main { max-width:1120px; margin:26px auto; padding:0 20px 60px; }
+  .flash { padding:12px 16px; border-radius:12px; margin:12px 0; font-size:14px; border:1px solid; }
+  .flash.ok { background:rgba(159,220,86,.12); border-color:rgba(159,220,86,.4); color:#C8F29A; }
+  .flash.error { background:rgba(255,115,102,.12); border-color:rgba(255,115,102,.4); color:#FF9E93; }
+  .card {
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:22px; margin-bottom:20px; box-shadow:0 12px 30px rgba(0,0,0,.30);
+  }
+  .card h2 { margin:0 0 16px; font-size:17px; font-weight:600; letter-spacing:.2px; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; letter-spacing:.3px; }
+  input[type=text], input[type=date], input[type=time], input[type=number], input[type=file], select {
+    width:100%; padding:10px 12px; border:1px solid rgba(234,255,210,.16);
+    border-radius:10px; font-size:14px; color:var(--ink);
+    background:#171A14; outline:none; transition:.15s; font-family:inherit;
+  }
+  input:focus, select:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(159,220,86,.15); }
+  input::placeholder { color:#5E6A55; }
+  select option { background:#171A14; }
+  input[type=file] { padding:8px; cursor:pointer; }
   .row { display:flex; gap:14px; flex-wrap:wrap; }
-  .row > div { flex:1; min-width:160px; }
-  button, .btn { display:inline-block; background:var(--accent); color:#fff; border:none; border-radius:6px;
-    padding:9px 18px; font-size:14px; cursor:pointer; text-decoration:none; }
-  button:hover, .btn:hover { filter:brightness(1.12); }
-  button.small, .btn.small { padding:4px 10px; font-size:12px; }
-  button.danger { background:#b23b3b; }
-  button.ghost { background:#eef2f8; color:var(--accent); }
+  .row > div { flex:1; min-width:150px; }
+  button, .btn {
+    display:inline-block; background:var(--accent); color:var(--accent-ink);
+    border:none; border-radius:10px; padding:10px 20px; font-size:14px; font-weight:600;
+    cursor:pointer; text-decoration:none; transition:.15s; font-family:inherit;
+  }
+  button:hover, .btn:hover { filter:brightness(1.08); box-shadow:0 4px 16px rgba(159,220,86,.3); }
+  button.small, .btn.small { padding:5px 12px; font-size:12px; border-radius:8px; }
+  button.danger { background:rgba(255,115,102,.14); color:#FF9E93; border:1px solid rgba(255,115,102,.45); }
+  button.danger:hover { background:var(--coral); color:var(--accent-ink); box-shadow:0 4px 16px rgba(255,115,102,.3); }
+  button.ghost { background:rgba(234,255,210,.06); color:var(--ink); border:1px solid var(--line); }
+  button.ghost:hover { border-color:var(--accent); color:var(--accent); box-shadow:none; }
   table { width:100%; border-collapse:collapse; font-size:14px; }
-  th { text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); }
-  th, td { padding:9px 10px; border-bottom:1px solid var(--line); }
-  tr:nth-child(even) td { background:#fafbfd; }
-  .badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:12px; font-weight:600; }
-  .badge.active { background:#e4f4e6; color:#1d6b2b; }
-  .badge.ex { background:#eceff4; color:#5b6879; }
-  .badge.Present { background:#e2efda; color:#2c6e3f; }
-  .badge.Late { background:#fff2cc; color:#8a6d00; }
-  .badge.Absent { background:#fdeaea; color:#a12626; }
-  .badge.Leave { background:#dbe9f7; color:#1f5f96; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); font-weight:600; }
+  th, td { padding:11px 10px; border-bottom:1px solid var(--line); }
+  tbody tr { transition:.12s; }
+  tbody tr:hover td { background:rgba(159,220,86,.05); }
+  .badge { display:inline-block; padding:3px 12px; border-radius:999px; font-size:12px; font-weight:600; }
+  .badge.Present { background:rgba(159,220,86,.16); color:var(--accent); }
+  .badge.Late { background:rgba(234,255,210,.12); color:var(--pale); }
+  .badge.Absent { background:rgba(255,115,102,.16); color:#FF9E93; }
+  .badge.Leave { background:rgba(84,95,255,.20); color:#9BA3FF; }
+  .badge.active { background:rgba(159,220,86,.16); color:var(--accent); }
+  .badge.ex { background:rgba(234,255,210,.08); color:var(--muted); }
   .stats { display:flex; gap:16px; flex-wrap:wrap; }
-  .stat { flex:1; min-width:150px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px; }
-  .stat .num { font-size:30px; font-weight:700; color:var(--accent); }
-  .stat .lbl { font-size:13px; color:var(--muted); }
-  .warnbox { background:#fff7e0; border:1px solid #f2dfa3; color:#7a5b00; border-radius:6px;
-    padding:10px 14px; font-size:14px; margin:12px 0; display:none; }
-  .hint { font-size:13px; color:var(--muted); margin-top:10px; }
-  pre { background:#0f172a; color:#dbe7f5; padding:14px; border-radius:8px; font-size:13px; overflow-x:auto; }
-  code { background:#eef2f8; padding:1px 5px; border-radius:4px; font-size:13px; }
+  .stat {
+    flex:1; min-width:160px; background:var(--card); border:1px solid var(--line);
+    border-radius:var(--radius); padding:20px; box-shadow:0 12px 30px rgba(0,0,0,.25);
+  }
+  .stat .num { font-size:32px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .stat .lbl { font-size:13px; color:var(--muted); margin-top:4px; }
+  .warnbox {
+    background:rgba(233,196,106,.10); border:1px solid rgba(233,196,106,.4);
+    color:#F2D98B; border-radius:10px; padding:11px 15px; font-size:14px; margin:14px 0; display:none;
+  }
+  .hint { font-size:13px; color:var(--muted); margin-top:10px; line-height:1.6; }
+  pre { background:#10130D; color:#C9DFB4; border:1px solid var(--line); padding:15px; border-radius:12px; font-size:13px; overflow-x:auto; }
+  code { background:rgba(159,220,86,.10); color:var(--accent); padding:1px 6px; border-radius:5px; font-size:13px; }
+  a.inline { color:var(--accent); }
+  .thumb {
+    width:46px; height:46px; object-fit:cover; border-radius:10px;
+    border:1px solid var(--line); display:block; transition:.15s;
+  }
+  .thumb:hover { border-color:var(--accent); transform:scale(1.06); box-shadow:0 4px 14px rgba(159,220,86,.35); }
+  .amount { font-variant-numeric:tabular-nums; font-weight:600; }
+  .muted { color:var(--muted); }
+  .filters { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+  .filters > div { min-width:130px; }
 </style>
+{% block head %}{% endblock %}
 </head>
 <body>
 <header>
-  <h1>HRMS</h1>
+  <div class="brand"><span class="mark"></span>HRMS</div>
   <nav>
     <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">Home</a>
     <a href="{{ url_for('employees_page') }}" class="{{ 'active' if request.endpoint == 'employees_page' }}">Employees</a>
     <a href="{{ url_for('attendance_page') }}" class="{{ 'active' if request.endpoint == 'attendance_page' }}">Attendance</a>
+    <a href="{{ url_for('transactions_page') }}" class="{{ 'active' if request.endpoint in ('transactions_page', 'transaction_delete') }}">Transactions</a>
+    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Totals</a>
     <a href="{{ url_for('export_page') }}" class="{{ 'active' if request.endpoint in ('export_page', 'export_download') }}">Export</a>
-    <a href="{{ url_for('import_page') }}" class="{{ 'active' if request.endpoint == 'import_page' }}">Import JSON</a>
+    <a href="{{ url_for('import_page') }}" class="{{ 'active' if request.endpoint == 'import_page' }}">Import</a>
   </nav>
 </header>
 <main>

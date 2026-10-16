@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Transactions{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Add transaction</h2>
+  <form method="post" enctype="multipart/form-data">
+    <div class="row">
+      <div>
+        <label for="name">Name *</label>
+        <input type="text" id="name" name="name" required list="name-list" placeholder="person / business">
+        <datalist id="name-list">
+          {% for n in names %}<option value="{{ n }}"></option>{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label for="day">Date *</label>
+        <input type="date" id="day" name="day" value="{{ today }}" required>
+      </div>
+      <div>
+        <label for="amount">Amount *</label>
+        <input type="number" id="amount" name="amount" min="0" step="0.01" required placeholder="e.g. 1500">
+      </div>
+      <div>
+        <label for="client">Client (optional)</label>
+        <input type="text" id="client" name="client" placeholder="e.g. Acme Corp">
+      </div>
+      <div>
+        <label for="image">Image / receipt *</label>
+        <input type="file" id="image" name="image" accept="image/*" required>
+      </div>
+      <div style="flex:0 0 auto; display:flex; align-items:flex-end">
+        <button type="submit">Add transaction</button>
+      </div>
+    </div>
+    <p class="hint">PNG, JPG, WEBP or GIF up to 8 MB. The image is saved locally in
+      <code>data/uploads/</code>.</p>
+  </form>
+</div>
+
+<div class="card">
+  <h2>{% if name_q %}Complete history: "{{ name_q }}"{% else %}Transactions{% endif %}</h2>
+
+  <form method="get" class="filters">
+    <div>
+      <label for="month">Month</label>
+      <select id="month" name="month">
+        <option value="">All months</option>
+        {% for name_ in months %}
+          <option value="{{ loop.index }}" {{ 'selected' if loop.index == month }}>{{ name_ }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="year">Year</label>
+      <select id="year" name="year">
+        <option value="">All years</option>
+        {% for y in years %}
+          <option value="{{ y }}" {{ 'selected' if y == year|string }}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="name">Person (complete history)</label>
+      <input type="text" id="name" name="name" value="{{ name_q }}" list="name-list" placeholder="type a name...">
+    </div>
+    <div style="flex:0 0 auto; display:flex; gap:10px">
+      <button type="submit">Search</button>
+      <a class="btn ghost" href="{{ url_for('transactions_page') }}" style="padding:10px 20px">Clear</a>
+    </div>
+  </form>
+
+  <div class="stats" style="margin-top:18px">
+    <div class="stat"><div class="num" id="sum-count">{{ summary.count }}</div><div class="lbl">Transactions{% if month or year or name_q %} in this search{% endif %}</div></div>
+    <div class="stat"><div class="num" id="sum-amount">{{ "{:,.2f}".format(summary.amount) }}</div><div class="lbl">Total amount</div></div>
+    <div class="stat"><div class="num" id="sum-people">{{ summary.people }}</div><div class="lbl">People involved</div></div>
+  </div>
+  {% if name_q %}<p class="hint">Showing every transaction matching "{{ name_q }}"{% if month or year %} (with the month/year filter applied){% endif %}.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>{{ transactions|length }} record(s)</h2>
+  {% if transactions %}
+  <table>
+    <thead>
+      <tr><th>Image</th><th>Date</th><th>Name</th><th>Client</th><th>Amount</th><th>ID</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for t in transactions %}
+      <tr>
+        <td>
+          <a href="{{ url_for('transaction_image', filename=t.image) }}" target="_blank">
+            <img class="thumb" src="{{ url_for('transaction_image', filename=t.image) }}" alt="{{ t.id }}">
+          </a>
+        </td>
+        <td>{{ t.date }}</td>
+        <td>{{ t.name }}</td>
+        <td>{{ t.client or '—' }}</td>
+        <td class="amount">{{ "{:,.2f}".format(t.amount) }}</td>
+        <td class="muted">{{ t.id }}</td>
+        <td style="text-align:right">
+          <form method="post" action="{{ url_for('transaction_delete', txn_id=t.id, month=month or '', year=year or '', name=name_q) }}"
+                style="display:inline" onsubmit="return confirm('Delete {{ t.id }} ({{ t.name }}, {{ t.amount }})?\nThe image will be deleted too.')">
+            <button class="small danger" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint">No transactions match - add the first one above or clear the filters.</p>
+  {% endif %}
+</div>
+{% endblock %}

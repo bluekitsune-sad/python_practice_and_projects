@@ -231,6 +231,82 @@ def main() -> int:
     leave_cells = [r for r in wb2.active.iter_rows(min_row=2) if r[5].value == "Leave"]
     check("xlsx Leave row colour", leave_cells and leave_cells[0][5].fill.fgColor.rgb.endswith("DDEBF7"))
 
+    # transactions ---------------------------------------------------------
+    resp = client.get("/transactions")
+    check("GET /transactions -> 200", resp.status_code == 200)
+    png = b"\x89PNG\r\n\x1a\n" + b"fake-png-bytes" * 4
+
+    def add_txn(name, day, amount, client_name="", fname="receipt.png"):
+        return client.post("/transactions", data={
+            "name": name, "day": day, "amount": amount, "client": client_name,
+            "image": (io.BytesIO(png), fname),
+        }, content_type="multipart/form-data", follow_redirects=True).data.decode("utf-8")
+
+    body = add_txn("Client A", "2026-10-14", "1500.5")
+    check("add transaction saves record + image",
+          "Added txn_001" in body and (tmp / "uploads" / "txn_001.png").exists(), body[:200])
+    check("add transaction stored in JSON",
+          any(t["id"] == "txn_001" and t["amount"] == 1500.5 and t["client"] == ""
+              for t in json.loads((tmp / "transactions.json").read_text("utf-8"))["transactions"]))
+    check("second transaction (other month, with client)",
+          "Added txn_002" in add_txn("Client B", "2026-09-20", "499.5", client_name="Acme"))
+    check("third transaction", "Added txn_003" in add_txn("Client C", "2026-10-15", "49.5"))
+
+    out = client.post("/transactions", data={"name": "X", "day": "2026-10-01", "amount": "5"},
+                      follow_redirects=True).data.decode("utf-8")
+    check("transaction without image rejected", "An image is required" in out)
+    out = add_txn("X", "2026-10-01", "5", fname="evil.exe")
+    check("bad image extension rejected",
+          "Image must be one of" in out and not (tmp / "uploads" / "txn_004.exe").exists())
+    out = client.post("/transactions", data={"name": "X", "day": "2026-10-01", "amount": "-5",
+                                             "image": (io.BytesIO(png), "ok.png")},
+                      content_type="multipart/form-data", follow_redirects=True).data.decode("utf-8")
+    check("negative amount rejected", "Amount must be a positive number" in out)
+    check("fourth transaction", "Added txn_004" in add_txn("Client A", "2026-08-30", "200"))
+
+    # monthly search: 2 txns in Oct (Client A + C), 1,550.00, 2 people
+    body = client.get("/transactions?month=10&year=2026").data.decode("utf-8")
+    check("month search Oct: count/amount/people",
+          'id="sum-count">2<' in body and "1,550.00" in body and 'id="sum-people">2<' in body,
+          body[:0] or "summary mismatch")
+    body = client.get("/transactions?month=9&year=2026").data.decode("utf-8")
+    check("month search Sep: single record",
+          'id="sum-count">1<' in body and "499.50" in body and 'id="sum-people">1<' in body)
+
+    # individual complete history: Client A = txn_001 (Oct) + txn_004 (Aug)
+    body = client.get("/transactions?name=Client%20A").data.decode("utf-8")
+    check("individual history: 2 records, 1,700.50",
+          "Complete history" in body and 'id="sum-count">2<' in body and "1,700.50" in body,
+          "history mismatch")
+
+    # delete removes record + image
+    resp = client.post("/transactions/txn_002/delete", follow_redirects=True)
+    check("delete transaction + image",
+          b"Deleted txn_002" in resp.data and not (tmp / "uploads" / "txn_002.png").exists())
+    remaining = [t["id"] for t in json.loads((tmp / "transactions.json").read_text("utf-8"))["transactions"]]
+    check("json after delete", remaining == ["txn_001", "txn_003", "txn_004"], str(remaining))
+
+    # image serving + safety
+    resp = client.get("/uploads/txn_001.png")
+    check("image served over HTTP", resp.status_code == 200 and resp.data.startswith(b"\x89PNG"))
+    check("upload path traversal blocked",
+          client.get("/uploads/..%2femployees.json").status_code == 404)
+
+    # totals dashboard -----------------------------------------------------
+    resp = client.get("/dashboard")
+    body = resp.data.decode("utf-8")
+    check("GET /dashboard -> 200", resp.status_code == 200)
+    # remaining: 1500.5 + 49.5 + 200 = 1,750.00 across 3 records, 2 people (A, C)
+    check("dashboard KPIs (total/count/people)",
+          'id="kpi-total">1,750.00<' in body and 'id="kpi-count">3<' in body
+          and 'id="kpi-people">2<' in body, "KPI mismatch")
+    check("dashboard this-month KPI (pinned Oct)", 'id="kpi-month">1,550.00<' in body)
+    check("dashboard has bar chart + donut + recent",
+          'class="bars"' in body and "<svg" in body and "Recent transactions" in body)
+
+    body = client.get("/").data.decode("utf-8")
+    check("home shows transaction stat", "Transactions · 1,750.00" in body)
+
     # report --------------------------------------------------------------
     failed = [r for r in results if not r[1]]
     for name, ok, extra in results:

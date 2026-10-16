@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Totals{% endblock %}
+{% block head %}
+<style>
+  .dash-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; }
+  .charts-grid { display:grid; grid-template-columns:1.7fr 1fr; gap:16px; }
+  @media (max-width:900px) { .dash-grid, .charts-grid { grid-template-columns:1fr 1fr; } }
+  @media (max-width:620px) { .dash-grid, .charts-grid { grid-template-columns:1fr; } }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+         padding:20px; box-shadow:0 12px 30px rgba(0,0,0,.25); position:relative; overflow:hidden; }
+  .kpi::after { content:""; position:absolute; right:-30px; top:-30px; width:90px; height:90px;
+                border-radius:50%; background:radial-gradient(circle, rgba(159,220,86,.16), transparent 70%); }
+  .kpi .val { font-size:30px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums;
+              letter-spacing:-.5px; margin-top:6px; }
+  .kpi.blue .val { color:#9BA3FF; }
+  .kpi.pale .val { color:var(--pale); }
+  .kpi .lbl { font-size:13px; color:var(--muted); font-weight:500; }
+  .kpi .sub { font-size:12px; color:var(--muted); margin-top:10px; }
+  .bars { display:flex; align-items:flex-end; gap:8px; height:230px; margin-top:18px;
+          padding-top:10px; border-bottom:1px solid var(--line); }
+  .bar-col { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center;
+             gap:8px; height:100%; min-width:0; }
+  .bar { width:100%; max-width:30px; border-radius:7px 7px 3px 3px; height:0;
+         background:linear-gradient(180deg, #9FDC56, #6FAE3E); transition:.2s; position:relative; }
+  .bar:hover { filter:brightness(1.2); }
+  .bar.now { background:linear-gradient(180deg, #EAFFD2, #9FDC56); box-shadow:0 0 18px rgba(159,220,86,.45); }
+  .bar.zero { background:#2A2F25; min-height:4px; }
+  .bar-lbl { font-size:11px; color:var(--muted); letter-spacing:.5px; }
+  .bar-col.now .bar-lbl { color:var(--accent); font-weight:700; }
+  .axis-lbl { font-size:11px; color:var(--muted); }
+  .donut-wrap { display:flex; flex-direction:column; align-items:center; gap:6px; margin-top:6px; }
+  .donut { position:relative; width:190px; height:190px; }
+  .donut svg { width:100%; height:100%; transform:rotate(-90deg); }
+  .donut .center { position:absolute; inset:0; display:flex; flex-direction:column;
+                   align-items:center; justify-content:center; text-align:center; }
+  .donut .center .c-lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  .donut .center .c-val { font-size:21px; font-weight:700; color:var(--pale); font-variant-numeric:tabular-nums; }
+  .legend { list-style:none; margin:14px 0 0; padding:0; width:100%; }
+  .legend li { display:flex; align-items:center; gap:10px; padding:7px 2px; font-size:13px;
+               border-bottom:1px dashed rgba(234,255,210,.07); }
+  .legend .dot { width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
+  .legend .who { flex:1; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .legend .pct { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .legend .amt { color:var(--pale); font-weight:600; font-variant-numeric:tabular-nums; }
+  .recent-row { display:flex; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .recent-row:last-child { border-bottom:none; }
+  .recent-row .r-name { flex:1; font-weight:600; }
+  .recent-row .r-date { color:var(--muted); font-size:13px; width:96px; }
+  .recent-row .r-client { color:var(--muted); font-size:13px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .recent-row .r-amt { font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .empty-state { text-align:center; padding:36px 10px; color:var(--muted); }
+  .empty-state .big { font-size:44px; margin-bottom:8px; }
+</style>
+{% endblock %}
+{% block content %}
+<h1 style="font-size:26px; margin:4px 0 20px; letter-spacing:-.5px">Totals</h1>
+
+{% if not has_data %}
+<div class="card empty-state">
+  <div class="big">&#128202;</div>
+  <h2 style="justify-content:center">No transactions yet</h2>
+  <p>Add your first transaction on the <a class="inline" href="{{ url_for('transactions_page') }}">Transactions</a>
+     page and the graphs here will come alive.</p>
+</div>
+{% else %}
+<div class="dash-grid">
+  <div class="kpi">
+    <div class="lbl">Total amount (all time)</div>
+    <div class="val" id="kpi-total">{{ "{:,.2f}".format(total_amount) }}</div>
+    <div class="sub">across {{ total_count }} transaction(s)</div>
+  </div>
+  <div class="kpi pale">
+    <div class="lbl">This month</div>
+    <div class="val" id="kpi-month">{{ "{:,.2f}".format(month_amount) }}</div>
+    <div class="sub">{{ month_count }} transaction(s) · {{ month_people }} people</div>
+  </div>
+  <div class="kpi blue">
+    <div class="lbl">People</div>
+    <div class="val" id="kpi-people">{{ people_count }}</div>
+    <div class="sub">distinct names{{ ' · ' ~ client_count ~ ' client(s)' if client_count else '' }}</div>
+  </div>
+  <div class="kpi pale">
+    <div class="lbl">Transactions</div>
+    <div class="val" id="kpi-count">{{ total_count }}</div>
+    <div class="sub">records stored with images</div>
+  </div>
+</div>
+
+<div class="charts-grid" style="margin-top:16px">
+  <div class="card">
+    <h2>Monthly amounts <span class="muted" style="font-weight:400; font-size:13px">· last 12 months</span></h2>
+    <div class="bars">
+      {% for bar in bars %}
+      <div class="bar-col {{ 'now' if bar.now }}">
+        <div class="bar {{ 'zero' if bar.empty }} {{ 'now' if bar.now }}"
+             style="height:{{ bar.height }}%"
+             title="{{ bar.label }}: {{ "{:,.2f}".format(bar.amount) }}"></div>
+        <div class="bar-lbl">{{ bar.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="hint">Highlighted bar = current month. Amounts are what you entered per transaction.</p>
+  </div>
+
+  <div class="card">
+    <h2>Top people by amount</h2>
+    <div class="donut-wrap">
+      <div class="donut">
+        <svg viewBox="0 0 160 160" role="img" aria-label="amount split by person">
+          <circle cx="80" cy="80" r="64" fill="none" stroke="#2A2F25" stroke-width="18"></circle>
+          {% for seg in segments %}
+          <circle cx="80" cy="80" r="64" fill="none" stroke="{{ seg.color }}" stroke-width="18"
+                  stroke-dasharray="{{ seg.dash }}" stroke-dashoffset="{{ seg.offset }}"
+                  stroke-linecap="butt"></circle>
+          {% endfor %}
+        </svg>
+        <div class="center">
+          <div class="c-lbl">Total</div>
+          <div class="c-val">{{ "{:,.0f}".format(donut_total) }}</div>
+        </div>
+      </div>
+      <ul class="legend">
+        {% for seg in segments %}
+        <li>
+          <span class="dot" style="background:{{ seg.color }}"></span>
+          <span class="who" title="{{ seg.label }}">{{ seg.label }}</span>
+          <span class="pct">{{ seg.pct }}%</span>
+          <span class="amt">{{ "{:,.2f}".format(seg.amount) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>Recent transactions</h2>
+  {% for t in recent %}
+  <div class="recent-row">
+    <img class="thumb" src="{{ url_for('transaction_image', filename=t.image) }}" alt="{{ t.id }}">
+    <span class="r-name">{{ t.name }}</span>
+    <span class="r-client">{{ t.client or '' }}</span>
+    <span class="r-date">{{ t.date }}</span>
+    <span class="r-amt">{{ "{:,.2f}".format(t.amount) }}</span>
+  </div>
+  {% endfor %}
+  <p class="hint">Open <a class="inline" href="{{ url_for('transactions_page') }}">Transactions</a> to search a
+    specific month or a person's complete history.</p>
+</div>
+{% endif %}
+{% endblock %}
