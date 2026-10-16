@@ -836,5 +836,125 @@ def dashboard():
     )
 
 
+# ----------------------------------------------------------------- calendar --
+def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
+    index = year * 12 + (month - 1) + delta
+    return index // 12, index % 12 + 1
+
+
+@app.route("/calendar")
+def calendar_page():
+    """Month grid: per-day transaction total + attendance %, month chips on top."""
+    today = date.today()
+    try:
+        month = int(request.args.get("month", today.month))
+        year = int(request.args.get("year", today.year))
+    except ValueError:
+        month, year = today.month, today.year
+    if not (1 <= month <= 12) or not (2000 <= year <= 2100):
+        month, year = today.month, today.year
+
+    # Same rule as the export page: unmarked working days become Absent, so the
+    # percentages are honest. (materialize_absents never overwrites.)
+    filled, off_days = materialize_absents(year, month)
+    if filled:
+        flash(
+            f"Auto-filled {filled} unmarked working day(s) as Absent "
+            f"(off days skipped: {', '.join(off_days) or 'none'}).",
+            "ok",
+        )
+
+    prefix = f"{year:04d}-{month:02d}"
+    off_names = {d.strip().lower() for d in off_days}
+
+    # per-day + per-month attendance: Present/Late = attended; Leave is
+    # excused (counted on neither side); everything else counts as expected.
+    day_stats: dict[int, list[int]] = {}
+    month_att = month_exp = 0
+    for days in load_attendance().values():
+        for iso, rec in days.items():
+            iso = str(iso)
+            if not iso.startswith(prefix) or len(iso) != 10:
+                continue
+            if rec.get("status") == "Leave":
+                continue
+            stats = day_stats.setdefault(int(iso[8:10]), [0, 0])
+            stats[1] += 1
+            month_exp += 1
+            if rec.get("status") in ("Present", "Late"):
+                stats[0] += 1
+                month_att += 1
+
+    # per-day transactions (all names together)
+    day_txn: dict[int, list] = {}
+    month_total = 0.0
+    month_txns = 0
+    for txn in load_transactions():
+        iso = str(txn.get("date", ""))
+        if not iso.startswith(prefix) or len(iso) != 10:
+            continue
+        try:
+            day_num = int(iso[8:10])
+        except ValueError:
+            continue
+        entry = day_txn.setdefault(day_num, [0.0, 0])
+        entry[0] += _amount(txn)
+        entry[1] += 1
+        month_total += _amount(txn)
+        month_txns += 1
+
+    # grid: Monday first, padded to whole weeks; None = blank cell
+    first = date(year, month, 1)
+    days_in_month = calendar.monthrange(year, month)[1]
+    cells: list = [None] * first.weekday()
+    for day in range(1, days_in_month + 1):
+        day_date = date(year, month, day)
+        attended, expected = day_stats.get(day, [0, 0])
+        txn_amount, txn_count = day_txn.get(day, [0.0, 0])
+        pct = round(attended / expected * 100) if expected else None
+        tips = []
+        if expected:
+            tips.append(f"Attendance {attended}/{expected}")
+        if txn_count:
+            tips.append(f"{txn_count} transaction(s), {txn_amount:,.2f}")
+        cells.append({
+            "day": day,
+            "iso": day_date.isoformat(),
+            "pct": pct,
+            "pct_text": f"{pct}%" if pct is not None else "—",
+            "tip": " - ".join(tips) or "No data yet",
+            "txn": txn_amount,
+            "txns": txn_count,
+            "off": day_date.strftime("%A").lower() in off_names,
+        })
+    while len(cells) % 7:
+        cells.append(None)
+
+    att_pct = round(month_att / month_exp * 100, 1) if month_exp else None
+    if att_pct is None:
+        att_text, att_class = "—", "c-none"
+    else:
+        att_text = f"{att_pct:g}%"
+        att_class = "c-good" if att_pct >= 90 else ("c-mid" if att_pct >= 70 else "c-warn")
+    prev_year, prev_month = _shift_month(year, month, -1)
+    next_year, next_month = _shift_month(year, month, 1)
+
+    return render_template(
+        "calendar.html",
+        cells=cells,
+        month=month,
+        year=year,
+        month_name=MONTH_NAMES[month - 1],
+        months=MONTH_NAMES,
+        att_text=att_text,
+        att_class=att_class,
+        month_total=month_total,
+        month_txns=month_txns,
+        prev={"month": prev_month, "year": prev_year},
+        next={"month": next_month, "year": next_year},
+        today=today.isoformat(),
+    )
+
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=False)

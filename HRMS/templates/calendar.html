@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}HRMS - Calendar{% endblock %}
+{% block head %}
+<style>
+  .cal-top { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .cal-title { font-size:25px; font-weight:700; letter-spacing:-.5px; margin:0; }
+  .cal-nav { display:flex; gap:8px; }
+  .cal-nav a {
+    text-decoration:none; font-size:13px; font-weight:600; padding:8px 15px; border-radius:999px;
+    color:var(--ink); border:1px solid var(--line); background:rgba(234,255,210,.05); transition:.15s;
+  }
+  .cal-nav a:hover { border-color:var(--accent); color:var(--accent); }
+  .chips { display:flex; gap:12px; margin-left:auto; flex-wrap:wrap; }
+  .chip { background:#171A14; border:1px solid var(--line); border-radius:14px; padding:12px 18px; min-width:150px; }
+  .chip .c-lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  .chip .c-val { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; margin-top:3px; letter-spacing:-.4px; }
+  .chip .c-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+  .c-good { color:var(--accent); } .c-mid { color:var(--pale); } .c-warn { color:#FF9E93; } .c-none { color:#4A5240; }
+  .cal-jump { display:flex; gap:10px; align-items:flex-end; margin-top:18px; }
+  .cal-jump > div { min-width:120px; }
+  .cal-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:10px; margin-top:16px; }
+  .cal-head { text-align:center; font-size:11px; letter-spacing:1.2px; text-transform:uppercase;
+              color:var(--muted); font-weight:600; padding-bottom:4px; }
+  .cal-head.weekend { color:#6E7A66; }
+  .cal-cell {
+    background:#171A14; border:1px solid var(--line); border-radius:14px; padding:11px;
+    min-height:116px; display:flex; flex-direction:column; gap:6px; transition:.15s;
+  }
+  .cal-cell:hover { border-color:rgba(159,220,86,.45); transform:translateY(-2px); }
+  .cal-cell.off { background:rgba(234,255,210,.03); border-style:dashed; }
+  .cal-cell.blank { background:transparent; border:none; pointer-events:none; }
+  .cal-day { font-size:13px; font-weight:700; color:var(--pale); display:flex; align-items:center; gap:6px; }
+  .cal-cell.today .cal-day {
+    background:var(--accent); color:var(--accent-ink); width:27px; height:27px;
+    border-radius:50%; justify-content:center; margin:-4px 0 0 -4px;
+    box-shadow:0 0 16px rgba(159,220,86,.5);
+  }
+  .cal-cell.off .cal-day { color:var(--muted); background:transparent; box-shadow:none; }
+  .cal-spacer { flex:1; }
+  .cal-txn { font-size:15px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; letter-spacing:-.3px; }
+  .cal-txn-cnt { font-size:10px; color:var(--muted); }
+  .cal-pct { font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; border-top:1px dashed rgba(234,255,210,.10); padding-top:6px; }
+  .p-hi { color:var(--accent); } .p-mid { color:var(--pale); } .p-lo { color:#FF9E93; } .p-none { color:#4A5240; font-weight:500; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:16px; }
+  .legend span b { color:var(--ink); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="cal-top">
+  <h1 class="cal-title">{{ month_name }} {{ year }}</h1>
+  <div class="cal-nav">
+    <a href="{{ url_for('calendar_page', month=prev.month, year=prev.year) }}">&#8249; Prev</a>
+    <a href="{{ url_for('calendar_page', month=next.month, year=next.year) }}">Next &#8250;</a>
+  </div>
+  <div class="chips">
+    <div class="chip">
+      <div class="c-lbl">Attendance this month</div>
+      <div class="c-val {{ att_class }}" id="cal-att">{{ att_text }}</div>
+      <div class="c-sub">Present + Late, Leave excused</div>
+    </div>
+    <div class="chip">
+      <div class="c-lbl">Total this month</div>
+      <div class="c-val" id="cal-total">{{ "{:,.2f}".format(month_total) }}</div>
+      <div class="c-sub">{{ month_txns }} transaction(s)</div>
+    </div>
+  </div>
+</div>
+
+<form method="get" class="cal-jump">
+  <div>
+    <label for="month">Jump to month</label>
+    <select id="month" name="month">
+      {% for m in months %}<option value="{{ loop.index }}" {{ 'selected' if loop.index == month }}>{{ m }}</option>{% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="year">Year</label>
+    <input type="number" id="year" name="year" value="{{ year }}" min="2000" max="2100">
+  </div>
+  <div style="flex:0 0 auto"><button type="submit">Show</button></div>
+</form>
+
+<div class="cal-grid">
+  {% for h in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+    <div class="cal-head {{ 'weekend' if loop.index > 5 }}">{{ h }}</div>
+  {% endfor %}
+
+  {% for cell in cells %}
+    {% if cell is none %}
+      <div class="cal-cell blank"></div>
+    {% else %}
+      {% set pct = cell.pct %}
+      {% set pc = 'p-none' if pct is none else ('p-hi' if pct >= 90 else ('p-mid' if pct >= 70 else 'p-lo')) %}
+      <div class="cal-cell {{ 'off' if cell.off }} {{ 'today' if cell.iso == today }}"
+           title="{{ cell.tip }}">
+        <div class="cal-day">{{ cell.day }}</div>
+        <div class="cal-spacer"></div>
+        {% if cell.txns %}
+          <div class="cal-txn">{{ "{:,.2f}".format(cell.txn) }}</div>
+          <div class="cal-txn-cnt">{{ cell.txns }} transaction{{ 's' if cell.txns != 1 }}</div>
+        {% endif %}
+        <div class="cal-pct {{ pc }}">{{ cell.pct_text }}</div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<div class="legend">
+  <span><b>Amount</b> = total transactions of that day (all names)</span>
+  <span><b>%</b> = attendance of the day (Present + Late / expected, Leave excused)</span>
+  <span style="color:var(--accent)">&#9679; 90%+</span>
+  <span style="color:var(--pale)">&#9679; 70-89%</span>
+  <span style="color:#FF9E93">&#9679; below 70%</span>
+  <span>Dashed cells = off days</span>
+</div>
+{% endblock %}

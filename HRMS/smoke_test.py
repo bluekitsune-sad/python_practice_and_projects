@@ -307,6 +307,23 @@ def main() -> int:
     body = client.get("/").data.decode("utf-8")
     check("home shows transaction stat", "Transactions · 1,750.00" in body)
 
+    # calendar view --------------------------------------------------------
+    resp = client.get("/calendar?month=10&year=2026")
+    body = resp.data.decode("utf-8")
+    check("GET /calendar -> 200", resp.status_code == 200)
+    # attendance: 3 attended / 18 expected = 16.7%; transactions: 1500.5 + 49.5
+    check("calendar month chips: attendance % + month total",
+          'id="cal-att">16.7%<' in body and 'id="cal-total">1,550.00<' in body)
+    check("day cell shows attendance ratio", "Attendance 1/2" in body)
+    check("day cell shows transaction total", "1,500.50" in body)
+    check("off day (Saturday) styled", "cal-cell off" in body)
+    check("prev/next month links",
+          "month=9&amp;year=2026" in body and "month=11&amp;year=2026" in body)
+    resp = client.get("/calendar?month=1&year=2025")
+    body = resp.data.decode("utf-8")
+    check("empty month chips (dash + zero)",
+          'id="cal-att">—<' in body and 'id="cal-total">0.00<' in body)
+
     # report --------------------------------------------------------------
     failed = [r for r in results if not r[1]]
     for name, ok, extra in results:

@@ -19,8 +19,9 @@
 - [x] Transaction **search**: month + year filter with summary cards (transactions / total amount / **people count**) and **complete per-person history** (name filter, case-insensitive), delete removes record + image
 - [x] **Totals dashboard**: KPI cards (all-time amount, this month, people, count), last-12-months bar chart, top-people donut (SVG), recent transactions, empty state
 - [x] **Theme**: dark-green direction applied to every page (palette `#9FDC56` / `#EAFFD2` / `#FF7366` / `#545FFF` / `#161815`, pill nav, "HRMS" brand, Neue Montreal fallback)
+- [x] **Calendar view**: month grid (Monday first) - each day cell shows the day's **total transactions (all names)** + **attendance %** (colour-coded, ratio in tooltip); beside the month name: **month attendance %** + **month total** (+ txns count); Prev/Next + jump-to-month, off days dashed, today highlighted, empty months show "—"
 - [x] `start.bat` - double-click to run the app in a shell window
-- [x] `smoke_test.py` - 82 end-to-end checks, all passing (incl. uploads, traversal guard, dashboard KPIs)
+- [x] `smoke_test.py` - 89 end-to-end checks, all passing (incl. uploads, traversal guard, dashboard KPIs, calendar math)
 - [x] Docs: `README.md` (user guide **with mermaid diagrams**), `AGENTS.md` (agents), this file
 
 ## Later / if wanted (not built yet - do not build without asking)
@@ -35,5 +36,6 @@
 - [ ] Employees page: quick CSV/XLSX download of the employee list
 - [ ] Attendance page: month grid/list view showing existing marks at a glance
 - [ ] Dashboard: date-range picker (not just all-time / this month / 12-month bars)
+- [ ] Calendar: click a day to jump to its detail / edit marks, optional Sunday-first weeks
 - [ ] Link transactions to employees/clients registry (currently free-text names by design)
 - [ ] Multi-user/network use -> then, and only then, add simple auth (user said: no login for now)

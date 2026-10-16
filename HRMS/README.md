@@ -38,6 +38,7 @@ flowchart LR
 | **Employees** | Add employees (ID `emp_001`, `emp_002`... auto-generated). Department and designation are optional. `Mark ex` keeps the person out of active use but preserves all history; `Delete` removes the person **and** their attendance records (confirmation prompt). |
 | **Attendance** | Pick employee + date (defaults to today) and a **day type**: *Worked* (enter arrival time + hours; status is automatic - **Present** at/before the late time, **Late** after), *Approved leave*, or *Absent*. Re-opening a date that has data shows an orange warning and prefills it. |
 | **Transactions** | Save an **image/receipt + name + date + amount + client (optional)**. Search by **month + year** (see count, total amount and **how many people** transacted that month) or by **person for their complete history**. Delete removes the record and its image. |
+| **Calendar** | Month grid: every day cell shows that day's **total transactions (all names)** and **attendance %**; beside the month name sit the **month's attendance %** and **month total**. Prev/Next navigation, off days dashed, today highlighted. |
 | **Totals** | Dashboard: KPI cards (all-time amount, this month, people, count), a **bar chart** of the last 12 months, a **donut** of top people by amount and the recent transactions. |
 | **Export** | Choose month + year, download the attendance CSV or XLSX. Opening this page also **saves** the auto-absents (see below). |
 | **Import** | Upload a correctly formatted `.json` file to bulk add/update employees and attendance. Nothing is ever deleted by an import. |
@@ -78,14 +79,35 @@ Rules:
 - Charts are hand-built (CSS bars + inline SVG) - no chart library, no internet needed.
 - Empty state guides you to the Transactions page.
 
+## Calendar view
+
+A month grid (Monday-first) that combines both worlds at a glance:
+
+- **Beside the month name**: two chips - **Attendance this month %** and
+  **Total this month** (with the transaction count under it).
+- **Every day cell**: the day's **total transaction amount** (all names together, with the
+  count) and the day's **attendance %**, colour-coded: lime 90%+, pale 70-89%, coral below
+  70%, `—` when nobody has records that day. Hover a cell for the exact ratio
+  (e.g. `Attendance 6/7 - 2 transaction(s), 1,500.50`).
+- Off days are dashed/muted, today's number is a lime disc, `‹ Prev` / `Next ›` walk the
+  months, and a jump form goes to any month/year.
+
+**Attendance % formula** (same everywhere): attended = `Present` + `Late`; expected = every
+record that isn't `Leave` (approved leave is excused - counted on neither side); `Absent`
+counts as expected but not attended.
+
+Opening a month on the calendar runs the same *unmarked = Absent* fill as the Export page,
+so the percentages always reflect reality.
+
 ## Attendance: unmarked day = Absent (automatic)
 
-When you open the **Export** page for a month, every **working day** you have not marked is
-filled with a saved `Absent` record - so nobody can be missed just because you forgot a day.
+When you open the **Export** or **Calendar** page for a month, every **working day** you have
+not marked is filled with a saved `Absent` record - so nobody can be missed just because you
+forgot a day.
 
 ```mermaid
 flowchart TD
-    U["Pick month + year on Export"] --> F["materialize_absents()"]
+    U["Pick month + year on Export or Calendar"] --> F["materialize_absents()"]
     F --> Q{"day already marked?"}
     Q -->|"yes"| KEEP["never overwritten<br/>change it to Approved leave if needed"]
     Q -->|"no"| W{"working day AND in the past?"}
@@ -198,7 +220,7 @@ palette (bars in lime, current month in pale).
 python smoke_test.py
 ```
 
-82 end-to-end checks against a temporary data folder (your real data is not touched).
+89 end-to-end checks against a temporary data folder (your real data is not touched).
 
 ## Not included (on purpose)
 
