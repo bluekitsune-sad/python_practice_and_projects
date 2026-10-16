@@ -21,6 +21,7 @@ HRMS/
                     attendance/settings/transactions/calendar/day/dashboard/export/import
   data/             JSON source of truth: config.json, employees.json, attendance.json,
                     transactions.json   +  data/uploads/ (transaction images) - all local-only
+  snap/             app screenshots (1..7.PNG) embedded in README - UI only, never user data
   README.md         user-facing docs (incl. mermaid diagrams)  |  TODO.md: status + future
 ```
 

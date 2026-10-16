@@ -4,6 +4,32 @@ A small local HRMS: employees, attendance, **transactions with receipt images** 
 monthly CSV/XLSX exports, plus a **Totals dashboard** with graphs.
 No login, no database - all data lives in plain JSON files (images on disk).
 
+## Screenshots
+
+The running app in the dark-green theme (see [Theme](#theme)); originals live in
+[`snap/`](snap/).
+
+**Home** - today's counts + quick start
+<img src="snap/1.PNG" width="720" alt="Home page - counts and quick start">
+
+**Employees** - add, edit, mark ex, delete (names blurred for privacy)
+<img src="snap/2.PNG" width="720" alt="Employees page - list with edit, mark ex and delete">
+
+**Attendance** - mark a day; office timing 22:00 -> 05:00 shown at the top
+<img src="snap/3.PNG" width="720" alt="Attendance page - mark attendance form">
+
+**Calendar** - month grid with per-day totals + attendance %, month chips on top
+<img src="snap/4.PNG" width="720" alt="Calendar page - October 2026 month grid">
+
+**Totals** - KPI cards, last-12-months bars, top-people donut
+<img src="snap/5.PNG" width="720" alt="Totals dashboard - KPIs, bar chart and donut">
+
+**Export** - month pick + Google-Sheets-friendly CSV/XLSX download
+<img src="snap/6.PNG" width="720" alt="Export page - download monthly attendance">
+
+**Settings** - office start/end times + off days, straight from the browser
+<img src="snap/7.PNG" width="720" alt="Settings page - office timing and off days">
+
 ## Install & run
 
 ```bash

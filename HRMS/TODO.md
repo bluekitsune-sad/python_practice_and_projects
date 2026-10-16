@@ -24,7 +24,7 @@
 - [x] **Status editing from the day table**: top-right toggle turns the badges into click-to-cycle (`Present -> Late -> Absent -> Leave`, unmarked `-` becomes `Present`), saved instantly via `POST /api/attendance/status` (no page reload)
 - [x] `start.bat` - double-click to run the app in a shell window
 - [x] `smoke_test.py` - 120 end-to-end checks, all passing (incl. uploads, traversal guard, dashboard KPIs, calendar math, edit/settings/day detail, night-shift status, status cycling)
-- [x] Docs: `README.md` (user guide **with mermaid diagrams**), `AGENTS.md` (agents), this file
+- [x] Docs: `README.md` (user guide **with mermaid diagrams** + **screenshots from `snap/`**), `AGENTS.md` (agents), this file
 
 ## Later / if wanted (not built yet - do not build without asking)
 
