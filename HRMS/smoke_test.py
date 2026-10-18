@@ -244,9 +244,10 @@ def main() -> int:
     check("GET /transactions -> 200", resp.status_code == 200)
     png = b"\x89PNG\r\n\x1a\n" + b"fake-png-bytes" * 4
 
-    def add_txn(name, day, amount, client_name="", fname="receipt.png"):
+    def add_txn(name, day, amount, client_name="", fname="receipt.png", conversation=""):
         return client.post("/transactions", data={
             "name": name, "day": day, "amount": amount, "client": client_name,
+            "conversation": conversation,
             "image": (io.BytesIO(png), fname),
         }, content_type="multipart/form-data", follow_redirects=True).data.decode("utf-8")
 
@@ -386,6 +387,46 @@ def main() -> int:
                       json={"emp_id": "emp_999", "day": "2026-10-14", "status": "Present"}
                       ).status_code == 404)
 
+    # Present with no time = on time + quick inline time editing -----------
+    def att_record(emp_id, day):
+        return (json.loads((tmp / "attendance.json").read_text("utf-8"))
+                ["records"][emp_id][day])
+
+    resp = client.post("/api/attendance/status",
+                       json={"emp_id": "emp_001", "day": "2026-10-16", "status": "Present"})
+    rec = att_record("emp_001", "2026-10-16")
+    check("Present with no time = on time (shift start 22:00)",
+          resp.status_code == 200 and rec["status"] == "Present"
+          and rec["arrival"] == "22:00", str(rec))
+    body = client.get("/calendar/2026-10-16").data.decode("utf-8")
+    check("day table has inline arrival/hour fields",
+          'id="status-toggle"' in body and 'data-kind="arrival"' in body
+          and 'value="22:00"' in body)
+    resp = client.post("/api/attendance/field",
+                       json={"emp_id": "emp_001", "day": "2026-10-16",
+                             "arrival": "02:15", "hours": "7.5"})
+    rec = att_record("emp_001", "2026-10-16")
+    check("typed time updates arrival/hours + derives Late (02:15)",
+          resp.status_code == 200 and rec["arrival"] == "02:15" and rec["hours"] == 7.5
+          and rec["status"] == "Late", str(rec))
+    client.post("/api/attendance/field",
+                json={"emp_id": "emp_001", "day": "2026-10-16", "arrival": "21:00", "hours": "8"})
+    rec = att_record("emp_001", "2026-10-16")
+    check("early time derives Present (21:00)",
+          rec["arrival"] == "21:00" and rec["status"] == "Present", str(rec))
+    client.post("/api/attendance/field",
+                json={"emp_id": "emp_001", "day": "2026-10-16", "arrival": "", "hours": ""})
+    rec = att_record("emp_001", "2026-10-16")
+    check("clearing the time on Present snaps to shift start + clears hours",
+          rec["arrival"] == "22:00" and rec["hours"] == 0.0, str(rec))
+    check("inline edit validation (bad time / bad hours)",
+          client.post("/api/attendance/field",
+                      json={"emp_id": "emp_001", "day": "2026-10-16",
+                            "arrival": "99:99", "hours": "8"}).status_code == 400
+          and client.post("/api/attendance/field",
+                          json={"emp_id": "emp_001", "day": "2026-10-16",
+                                "arrival": "21:00", "hours": "abc"}).status_code == 400)
+
     # employee edit ---------------------------------------------------------
     resp = client.get("/employees/emp_001/edit")
     body = resp.data.decode("utf-8")
@@ -459,6 +500,47 @@ def main() -> int:
     check("settings restored (office 22:00-05:00, Saturday only)",
           cfg.get("LATE_TIME") == "22:00" and cfg.get("OFFICE_END") == "05:00"
           and cfg.get("OFF_DAYS") == ["Saturday"], str(cfg))
+
+    # transactions: conversation .txt + per-client folders -----------------
+    up = tmp / "uploads"
+    body = add_txn("Folder Client", "2026-10-17", "300", client_name="Acme Corp",
+                   fname="r.png", conversation="Me: send the invoice\nClient: done")
+    check("transaction with conversation added (flash names the txt)",
+          "Added txn_005" in body and "conversation.txt" in body, body[:200])
+    check("client folder holds image + conversation .txt",
+          (up / "Acme Corp" / "txn_005.png").exists()
+          and (up / "Acme Corp" / "txn_005.txt").exists(),
+          str(sorted(p.name for p in up.iterdir())))
+    resp = client.get("/transactions/txn_005/conversation")
+    ok = (resp.status_code == 200 and b"send the invoice" in resp.data
+          and "attachment" in resp.headers.get("Content-Disposition", ""))
+    resp.close()  # Windows keeps the just-downloaded file locked until closed
+    check("conversation downloads as .txt attachment", ok)
+    resp = client.get("/uploads/Acme%20Corp/txn_005.png")
+    ok = resp.status_code == 200
+    resp.close()
+    check("image served from the client folder", ok)
+    body = client.get("/transactions").data.decode("utf-8")
+    check("list shows the TXT download link",
+          'href="/transactions/txn_005/conversation"' in body)
+    check("no conversation stored -> no link + 404",
+          "txn_004/conversation" not in body
+          and client.get("/transactions/txn_004/conversation").status_code == 404)
+    body = add_txn("No Client", "2026-10-17", "50", conversation="just chatting")
+    check("no client -> common area at the uploads root",
+          "Added txn_006" in body and (up / "txn_006.png").exists()
+          and (up / "txn_006.txt").exists(), str(sorted(p.name for p in up.iterdir())))
+    body = add_txn("Evil", "2026-10-17", "10", client_name="../evil")
+    check("client name sanitised into a folder (no path escape)",
+          "Added txn_007" in body and (up / "evil" / "txn_007.png").exists()
+          and not (tmp / "evil").exists(), str(sorted(p.name for p in up.iterdir())))
+    resp = client.post("/transactions/txn_005/delete", follow_redirects=True)
+    check("delete removes image + conversation from the client folder",
+          b"Deleted txn_005" in resp.data
+          and not (up / "Acme Corp" / "txn_005.png").exists()
+          and not (up / "Acme Corp" / "txn_005.txt").exists())
+    check("legacy flat transactions keep working",
+          client.get("/uploads/txn_001.png").status_code == 200)
 
     # report --------------------------------------------------------------
     failed = [r for r in results if not r[1]]

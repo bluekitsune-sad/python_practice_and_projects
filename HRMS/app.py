@@ -124,6 +124,29 @@ def upload_dir() -> Path:
     return folder
 
 
+def client_folder(client: str) -> str:
+    """Filesystem-safe per-client folder inside data/uploads ('' = common root).
+
+    Deterministic per client name, so everything of one client lands together.
+    Windows path reserved names and any character outside alnum/space/-/_
+    are neutralised; the result is trimmed and capped.
+    """
+    label = " ".join(str(client or "").split())
+    cleaned = "".join(ch if (ch.isalnum() or ch in " -_") else "_" for ch in label)
+    cleaned = cleaned.strip(" ._")
+    if cleaned.lower() in {"con", "prn", "aux", "nul", "com1", "lpt1"}:
+        cleaned = f"_{cleaned}"
+    return cleaned[:40]
+
+
+def data_path(relative: str) -> Path | None:
+    """Resolve a stored relative path inside data/uploads, or None if it escapes."""
+    rel = str(relative or "").replace("\\", "/")
+    if not rel or rel.startswith("/") or ".." in rel.split("/"):
+        return None
+    return upload_dir() / rel
+
+
 # ----------------------------------------------------------------- helpers --
 def next_employee_id(employees: list[dict]) -> str:
     used = []
@@ -553,6 +576,58 @@ def api_set_status():
     if status in ("Absent", "Leave"):
         rec["arrival"] = ""
         rec["hours"] = 0.0
+    elif status == "Present" and not str(rec.get("arrival", "")).strip():
+        # Marked Present with no time = on time = start of the shift.
+        rec["arrival"] = load_config()["LATE_TIME"]
+    records.setdefault(emp_id, {})[day] = rec
+    save_attendance(records)
+    return jsonify(ok=True, record=rec)
+
+
+@app.post("/api/attendance/field")
+def api_set_field():
+    """Quick inline edit of arrival / hours from the day-detail table."""
+    payload = request.get_json(silent=True) or {}
+    emp_id = str(payload.get("emp_id", "")).strip()
+    day = str(payload.get("day", "")).strip()
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        return jsonify(error="date must be YYYY-MM-DD"), 400
+    if not any(str(e.get("id")) == emp_id for e in load_employees()):
+        return jsonify(error=f"employee {emp_id} not found"), 404
+
+    arrival = None
+    if "arrival" in payload:
+        raw = str(payload.get("arrival", "") or "").strip()
+        arrival = normalize_time(raw) if raw else ""
+        if arrival is None:
+            return jsonify(error="arrival must be HH:MM (00:00-23:59)"), 400
+    hours = None
+    if "hours" in payload:
+        raw = str(payload.get("hours", "") or "").strip()
+        try:
+            hours = float(raw) if raw else 0.0
+            if not 0.0 <= hours <= 24.0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify(error="hours must be a number between 0 and 24"), 400
+
+    cfg = load_config()
+    records = load_attendance()
+    rec = records.get(emp_id, {}).get(day) or {"arrival": "", "hours": 0.0}
+    if arrival is not None:
+        if arrival:
+            rec["arrival"] = arrival
+            # A typed time means the person showed up: status follows the window.
+            rec["status"] = attendance_status(arrival, cfg["LATE_TIME"], cfg["OFFICE_END"])
+        elif str(rec.get("status", "")) == "Present":
+            # Cleared time on Present = on time = start of the shift.
+            rec["arrival"] = cfg["LATE_TIME"]
+        else:
+            rec["arrival"] = ""
+    if hours is not None:
+        rec["hours"] = round(hours, 2)
     records.setdefault(emp_id, {})[day] = rec
     save_attendance(records)
     return jsonify(ok=True, record=rec)
@@ -742,6 +817,7 @@ def transactions_page():
         day = (request.form.get("day") or "").strip()
         client = (request.form.get("client") or "").strip()
         amount_raw = (request.form.get("amount") or "").strip()
+        conversation = request.form.get("conversation") or ""
         image = request.files.get("image")
 
         error = None
@@ -772,18 +848,29 @@ def transactions_page():
             flash(error, "error")
         else:
             txn_id = next_transaction_id(items)
+            # Per-client folder keeps a client's files together; no client =
+            # the common area (the uploads root).
+            folder = client_folder(client)
+            target_dir = upload_dir() / folder if folder else upload_dir()
+            target_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{txn_id}{ext}"
-            image.save(upload_dir() / filename)
+            image.save(target_dir / filename)
+            conversation_rel = ""
+            if conversation.strip():
+                conversation_rel = f"{folder}/{txn_id}.txt" if folder else f"{txn_id}.txt"
+                (upload_dir() / conversation_rel).write_text(conversation, encoding="utf-8")
             items.append({
                 "id": txn_id,
                 "name": name,
                 "date": day,
                 "amount": round(amount, 2),
                 "client": client,
-                "image": filename,
+                "image": f"{folder}/{filename}" if folder else filename,
+                "conversation": conversation_rel,
             })
             save_transactions(items)
-            flash(f"Added {txn_id} - {name}: {amount:,.2f}.", "ok")
+            note = " + conversation.txt" if conversation_rel else ""
+            flash(f"Added {txn_id} - {name}: {amount:,.2f}{note}.", "ok")
         return redirect(url_for("transactions_page"))
 
     # filters: month + year + name (all optional, combinable)
@@ -821,14 +908,36 @@ def transaction_delete(txn_id):
         flash(f"Transaction {txn_id} not found.", "error")
     else:
         save_transactions([t for t in items if t.get("id") != txn_id])
-        image = str(target.get("image") or "")
-        if image:
-            (upload_dir() / Path(image).name).unlink(missing_ok=True)
-        flash(f"Deleted {txn_id} - {target.get('name', '')}.", "ok")
+        skipped = []
+        for key in ("image", "conversation"):
+            path = data_path(str(target.get(key) or ""))
+            if path is None:
+                continue
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:  # file in use elsewhere - the record is gone anyway
+                skipped.append(path.name)
+        note = f" ({', '.join(skipped)} still in use - remove manually)" if skipped else ""
+        flash(f"Deleted {txn_id} - {target.get('name', '')}.{note}", "ok")
     return redirect(url_for("transactions_page", **request.args.to_dict()))
 
 
-@app.get("/uploads/<filename>")
+@app.get("/transactions/<txn_id>/conversation")
+def transaction_conversation(txn_id):
+    """Download the pasted conversation of one transaction as a .txt file."""
+    items = load_transactions()
+    target = next((t for t in items if t.get("id") == txn_id), None)
+    if target is None or not str(target.get("conversation") or ""):
+        return f"No conversation saved for {txn_id}.", 404
+    return send_from_directory(
+        upload_dir(),
+        target["conversation"],
+        as_attachment=True,
+        download_name=f"{txn_id} conversation.txt",
+    )
+
+
+@app.get("/uploads/<path:filename>")
 def transaction_image(filename):
     return send_from_directory(upload_dir(), filename)
 

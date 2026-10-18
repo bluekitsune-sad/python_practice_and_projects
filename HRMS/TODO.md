@@ -15,15 +15,16 @@
 - [x] Export by month + year: CSV and XLSX downloads (empty month = message, no empty file)
 - [x] Google Sheets friendly: UTF-8 BOM CSV; XLSX with plain YYYY-MM-DD text dates, styled header, colour-coded status (incl. blue Leave), frozen header + filter
 - [x] JSON file import: bulk add/update employees and attendance, skips + reports invalid entries
-- [x] **Transactions page**: image + name + date + amount + client (optional); images saved locally in `data/uploads/` as `txn_001.png` (PNG/JPG/WEBP/GIF, max 8 MB, server-generated names)
+- [x] **Transactions page**: image + name + date + amount + client (optional) + **conversation** (optional, pasted chat saved as a downloadable `.txt`); files grouped in a **per-client folder** `data/uploads/<client>/` (no client = common area at the uploads root); PNG/JPG/WEBP/GIF, max 8 MB, server-generated names
 - [x] Transaction **search**: month + year filter with summary cards (transactions / total amount / **people count**) and **complete per-person history** (name filter, case-insensitive), delete removes record + image
 - [x] **Totals dashboard**: KPI cards (all-time amount, this month, people, count), last-12-months bar chart, top-people donut (SVG), recent transactions, empty state
 - [x] **Theme**: dark-green direction applied to every page (palette `#9FDC56` / `#EAFFD2` / `#FF7366` / `#545FFF` / `#161815`, pill nav, "HRMS" brand, Neue Montreal fallback)
 - [x] **Calendar view**: month grid (Monday first) - each day cell shows the day's **total transactions (all names)** + **attendance %** (colour-coded, ratio in tooltip); beside the month name: **month attendance %** + **month total** (+ txns count); Prev/Next + jump-to-month, off days dashed, today highlighted, empty months show "—"
 - [x] **Day detail** (`/calendar/<date>`, click a calendar day): complete attendance table for the day (status badge / arrival / hours) + **Transactions column per person** (count + amount) + **Day total row** over all transactions (names outside the employee list noted below); off-day/future banners, prev/next-day links
 - [x] **Status editing from the day table**: top-right toggle turns the badges into click-to-cycle (`Present -> Late -> Absent -> Leave`, unmarked `-` becomes `Present`), saved instantly via `POST /api/attendance/status` (no page reload)
+- [x] **Quick time edits in the day table**: with editing ON you can also **type arrival / hours straight in the row** (`POST /api/attendance/field`) - a typed time re-derives the status from the office window; **marked Present with no time = on time** (arrival snaps to the shift start)
 - [x] `start.bat` - double-click to run the app in a shell window
-- [x] `smoke_test.py` - 120 end-to-end checks, all passing (incl. uploads, traversal guard, dashboard KPIs, calendar math, edit/settings/day detail, night-shift status, status cycling)
+- [x] `smoke_test.py` - 136 end-to-end checks, all passing (incl. uploads, traversal guard, dashboard KPIs, calendar math, edit/settings/day detail, night-shift status, status cycling, inline time edits, conversation .txt, client folders)
 - [x] Docs: `README.md` (user guide **with mermaid diagrams** + **screenshots from `snap/`**), `AGENTS.md` (agents), this file
 
 ## Later / if wanted (not built yet - do not build without asking)
@@ -38,7 +39,7 @@
 - [ ] Employees page: quick CSV/XLSX download of the employee list
 - [ ] Attendance page: month grid/list view showing existing marks at a glance
 - [ ] Dashboard: date-range picker (not just all-time / this month / 12-month bars)
-- [ ] Day view: edit arrival/hours or add a transaction directly from the day detail
-      page (status cycling is done); optional Sunday-first calendar weeks
+- [ ] Day view: add a transaction directly from the day detail page (status cycling +
+      arrival/hours editing are done); optional Sunday-first calendar weeks
 - [ ] Link transactions to employees/clients registry (currently free-text names by design)
 - [ ] Multi-user/network use -> then, and only then, add simple auth (user said: no login for now)

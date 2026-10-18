@@ -32,8 +32,14 @@
         <button type="submit">Add transaction</button>
       </div>
     </div>
-    <p class="hint">PNG, JPG, WEBP or GIF up to 8 MB. The image is saved locally in
-      <code>data/uploads/</code>.</p>
+    <div style="margin-top:14px">
+      <label for="conversation">Conversation with client (optional)</label>
+      <textarea id="conversation" name="conversation" rows="4"
+        placeholder="Paste the conversation between you and the client - it is saved as a .txt and can be downloaded from the list below."></textarea>
+    </div>
+    <p class="hint">PNG, JPG, WEBP or GIF up to 8 MB. With a client name everything is saved in that
+      client's own folder <code>data/uploads/&lt;client&gt;/</code> (image + conversation .txt);
+      without one it goes to the common area <code>data/uploads/</code>.</p>
   </form>
 </div>
 
@@ -98,8 +104,12 @@
         <td class="amount">{{ "{:,.2f}".format(t.amount) }}</td>
         <td class="muted">{{ t.id }}</td>
         <td style="text-align:right">
+          {% if t.get('conversation') %}
+          <a class="btn small ghost" style="margin-right:8px"
+             href="{{ url_for('transaction_conversation', txn_id=t.id) }}" title="Download the conversation (.txt)">TXT</a>
+          {% endif %}
           <form method="post" action="{{ url_for('transaction_delete', txn_id=t.id, month=month or '', year=year or '', name=name_q) }}"
-                style="display:inline" onsubmit="return confirm('Delete {{ t.id }} ({{ t.name }}, {{ t.amount }})?\nThe image will be deleted too.')">
+                style="display:inline" onsubmit="return confirm('Delete {{ t.id }} ({{ t.name }}, {{ t.amount }})?\nThe image and conversation (.txt) will be deleted too.')">
             <button class="small danger" type="submit">Delete</button>
           </form>
         </td>

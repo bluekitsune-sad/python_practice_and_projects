@@ -29,6 +29,13 @@
   .badge.cycle.none { background:rgba(234,255,210,.08); color:var(--muted); }
   body.status-edit .badge.cycle { cursor:pointer; outline:1px dashed rgba(159,220,86,.65); outline-offset:2px; }
   body.status-edit .badge.cycle:hover { filter:brightness(1.3); transform:scale(1.04); }
+  .cell-input {
+    width:96px; padding:6px 8px; border:1px solid transparent; border-radius:8px;
+    font-size:13px; color:var(--ink); background:transparent; outline:none; transition:.15s;
+    font-family:inherit; font-variant-numeric:tabular-nums;
+  }
+  .cell-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(159,220,86,.15); }
+  body.status-edit .cell-input { border-color:rgba(234,255,210,.16); background:#171A14; }
 </style>
 {% endblock %}
 {% block content %}
@@ -65,8 +72,10 @@
     <h2>Attendance ({{ rows|length }})</h2>
     <div class="side">
       <span class="hint" style="margin:0" id="status-hint">
-        Switch status editing ON, then click any status to cycle it
-        (Present &rarr; Late &rarr; Absent &rarr; Leave &rarr; ...) - saved instantly.
+        Switch editing ON, then click any status to cycle it
+        (Present &rarr; Late &rarr; Absent &rarr; Leave &rarr; ...) or type
+        arrival / hours straight in the row - saved instantly.
+        Marked Present with no time = on time (start of shift).
       </span>
       <button id="status-toggle" class="small ghost" type="button">Status editing: OFF</button>
     </div>
@@ -95,8 +104,16 @@
                 data-emp="{{ r.emp.id }}" data-day="{{ day.isoformat() }}">—</span>
           {% endif %}
         </td>
-        <td>{{ r.rec.get('arrival', '') if r.rec and r.rec.get('arrival') else '—' }}</td>
-        <td>{{ r.rec.get('hours', 0) if r.rec and r.rec.get('hours') else '—' }}</td>
+        <td>
+          <input class="cell-input" type="time" data-kind="arrival"
+                 data-emp="{{ r.emp.id }}" data-day="{{ day.isoformat() }}"
+                 value="{{ r.rec.get('arrival', '') if r.rec and r.rec.get('arrival') else '' }}" readonly>
+        </td>
+        <td>
+          <input class="cell-input" type="number" min="0" max="24" step="0.25" data-kind="hours"
+                 data-emp="{{ r.emp.id }}" data-day="{{ day.isoformat() }}"
+                 value="{{ '%g'|format(r.rec.get('hours', 0)) if r.rec and r.rec.get('hours') else '' }}" readonly>
+        </td>
         <td class="txn">
           {% if r.count %}{{ r.count }} txn{{ 's' if r.count != 1 }} · {{ "{:,.2f}".format(r.amount) }}
           {% else %}<span class="muted">—</span>{% endif %}
@@ -127,12 +144,24 @@
 const CYCLE = ['Present', 'Late', 'Absent', 'Leave'];
 let editing = false;
 const btn = document.getElementById('status-toggle');
+const inputs = document.querySelectorAll('.cell-input');
+
+function applyRecord(row, record) {
+  const badge = row.querySelector('.badge.cycle');
+  badge.dataset.status = record.status || '';
+  badge.className = 'badge cycle ' + (record.status || 'none');
+  badge.textContent = record.status || '—';
+  row.querySelector('input[data-kind=arrival]').value = record.arrival || '';
+  row.querySelector('input[data-kind=hours]').value =
+    record.hours ? String(+record.hours) : '';
+}
 
 btn.addEventListener('click', () => {
   editing = !editing;
   document.body.classList.toggle('status-edit', editing);
   btn.textContent = editing ? 'Status editing: ON' : 'Status editing: OFF';
   btn.classList.toggle('on', editing);
+  inputs.forEach(i => i.readOnly = !editing);
 });
 
 document.querySelectorAll('.badge.cycle').forEach(badge => {
@@ -146,11 +175,38 @@ document.querySelectorAll('.badge.cycle').forEach(badge => {
       body: JSON.stringify({emp_id: badge.dataset.emp, day: badge.dataset.day, status: next}),
     });
     if (res.ok) {
-      badge.dataset.status = next;
-      badge.className = 'badge cycle ' + next;
-      badge.textContent = next;
+      const data = await res.json();
+      const row = badge.closest('tr');
+      applyRecord(row, data.record);
+      if ((next === 'Late' || next === 'Present') && !data.record.arrival) {
+        row.querySelector('input[data-kind=arrival]').focus();
+      }
     } else {
       alert('Could not save the status change.');
+    }
+  });
+});
+
+inputs.forEach(inp => {
+  inp.addEventListener('change', async () => {
+    const row = inp.closest('tr');
+    const arrivalEl = row.querySelector('input[data-kind=arrival]');
+    const hoursEl = row.querySelector('input[data-kind=hours]');
+    const res = await fetch('/api/attendance/field', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        emp_id: arrivalEl.dataset.emp, day: arrivalEl.dataset.day,
+        arrival: arrivalEl.value, hours: hoursEl.value,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      // Show what the server stored (e.g. a cleared time on Present snaps
+      // back to the shift start = 22:00, and a typed time sets the status).
+      applyRecord(row, data.record);
+    } else {
+      alert('Could not save - use HH:MM for the time and 0-24 for hours.');
     }
   });
 });
