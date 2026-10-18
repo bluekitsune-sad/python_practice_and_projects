@@ -52,6 +52,10 @@ EXPORT_HEADERS = [
 # client's filename is never used, so uploads cannot escape the folder.
 UPLOAD_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+# fixed columns of the transactions CSV/XLSX export (dates stay plain strings)
+TXN_EXPORT_HEADERS = [
+    "ID", "Date", "Name", "Client", "Provider user", "Amount", "Image file", "Conversation file",
+]
 
 app = Flask(__name__)
 # secret_key is only used for one-shot flash messages; there is no login.
@@ -116,6 +120,14 @@ def load_transactions() -> list[dict]:
 
 def save_transactions(items: list[dict]) -> None:
     _save("transactions.json", {"transactions": items})
+
+
+def load_gateways() -> list[dict]:
+    return _load("gateways.json", {"gateways": []}).get("gateways", [])
+
+
+def save_gateways(items: list[dict]) -> None:
+    _save("gateways.json", {"gateways": items})
 
 
 def upload_dir() -> Path:
@@ -194,6 +206,15 @@ def next_transaction_id(items: list[dict]) -> str:
         if txn_id.startswith("txn_") and txn_id[4:].isdigit():
             used.append(int(txn_id[4:]))
     return f"txn_{(max(used) + 1) if used else 1:03d}"
+
+
+def next_gateway_id(items: list[dict]) -> str:
+    used = []
+    for gw in items:
+        gw_id = str(gw.get("id", ""))
+        if gw_id.startswith("gw_") and gw_id[3:].isdigit():
+            used.append(int(gw_id[3:]))
+    return f"gw_{(max(used) + 1) if used else 1:03d}"
 
 
 def transaction_filters() -> tuple[int, int, str]:
@@ -323,10 +344,10 @@ def materialize_absents(year: int, month: int) -> tuple[int, list]:
     return filled, off_days
 
 
-def make_csv(rows: list[list]) -> io.BytesIO:
+def make_csv(rows: list[list], headers: list[str] = EXPORT_HEADERS) -> io.BytesIO:
     buf = io.StringIO()
     writer = csv.writer(buf)  # comma separated, quoted when needed, CRLF lines
-    writer.writerow(EXPORT_HEADERS)
+    writer.writerow(headers)
     writer.writerows(rows)
     # utf-8-sig (BOM) so Google Sheets / Excel detect the encoding correctly.
     return io.BytesIO(buf.getvalue().encode("utf-8-sig"))
@@ -365,6 +386,57 @@ def make_xlsx(rows: list[list]) -> io.BytesIO:
 
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:{get_column_letter(len(EXPORT_HEADERS))}{ws.max_row}"
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return out
+
+
+def txn_export_rows(items: list[dict]) -> list[list]:
+    """One export row per transaction (order = TXN_EXPORT_HEADERS)."""
+    rows = []
+    for t in items:
+        rows.append([
+            str(t.get("id", "")),
+            str(t.get("date", "")),
+            str(t.get("name", "")),
+            str(t.get("client", "")),
+            str(t.get("provider", "")),
+            round(_amount(t), 2),
+            str(t.get("image", "")),
+            str(t.get("conversation", "")),
+        ])
+    return rows
+
+
+def make_txn_xlsx(rows: list[list]) -> io.BytesIO:
+    """Transactions sheet: same Google-Sheets-safe style as the attendance one."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Transactions"
+
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(bold=True, color="FFFFFF")
+
+    ws.append(TXN_EXPORT_HEADERS)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for row in rows:
+        ws.append(row)
+        amount_cell = ws.cell(row=ws.max_row, column=6)
+        amount_cell.number_format = "#,##0.00"
+
+    for index, header in enumerate(TXN_EXPORT_HEADERS, start=1):
+        letter = get_column_letter(index)
+        width = max([len(str(header))] + [len(str(r[index - 1])) for r in rows]) + 4
+        ws.column_dimensions[letter].width = min(max(width, 10), 40)
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(TXN_EXPORT_HEADERS))}{ws.max_row}"
 
     out = io.BytesIO()
     wb.save(out)
@@ -816,6 +888,7 @@ def transactions_page():
         name = (request.form.get("name") or "").strip()
         day = (request.form.get("day") or "").strip()
         client = (request.form.get("client") or "").strip()
+        provider = (request.form.get("provider") or "").strip()
         amount_raw = (request.form.get("amount") or "").strip()
         conversation = request.form.get("conversation") or ""
         image = request.files.get("image")
@@ -843,6 +916,10 @@ def transactions_page():
                 error = error or (
                     "Image must be one of: " + ", ".join(e.lstrip(".").upper() for e in sorted(UPLOAD_EXTS)) + "."
                 )
+        if not provider:
+            error = error or (
+                "Choose which payment account was used (add them under Settings - Payment gateways)."
+            )
 
         if error:
             flash(error, "error")
@@ -865,6 +942,7 @@ def transactions_page():
                 "date": day,
                 "amount": round(amount, 2),
                 "client": client,
+                "provider": provider,
                 "image": f"{folder}/{filename}" if folder else filename,
                 "conversation": conversation_rel,
             })
@@ -897,6 +975,7 @@ def transactions_page():
         names=sorted(names),
         years=sorted(years, reverse=True),
         today=date.today().isoformat(),
+        gateways=[str(g.get("name", "")) for g in load_gateways()],
     )
 
 
@@ -934,6 +1013,172 @@ def transaction_conversation(txn_id):
         target["conversation"],
         as_attachment=True,
         download_name=f"{txn_id} conversation.txt",
+    )
+
+
+@app.route("/transactions/<txn_id>/edit", methods=["GET", "POST"])
+def transaction_edit(txn_id):
+    """Edit a transaction's fields, receipt image and conversation in place."""
+    items = load_transactions()
+    target = next((t for t in items if t.get("id") == txn_id), None)
+    if target is None:
+        flash(f"Transaction {txn_id} not found.", "error")
+        return redirect(url_for("transactions_page"))
+
+    def render_form(values, conversation):
+        return render_template(
+            "transaction_edit.html",
+            txn=values,
+            conversation=conversation,
+            gateways=[str(g.get("name", "")) for g in load_gateways()],
+        )
+
+    if request.method == "GET":
+        conversation = ""
+        conv_path = data_path(str(target.get("conversation") or ""))
+        if conv_path is not None and conv_path.exists():
+            conversation = conv_path.read_text(encoding="utf-8", errors="replace")
+        return render_form(target, conversation)
+
+    # ---- POST: validate first (re-render with typed values on error) ----
+    name = (request.form.get("name") or "").strip()
+    day = (request.form.get("day") or "").strip()
+    client = (request.form.get("client") or "").strip()
+    provider = (request.form.get("provider") or "").strip()
+    amount_raw = (request.form.get("amount") or "").strip()
+    conversation = request.form.get("conversation") or ""
+    image = request.files.get("image")
+
+    error = None
+    if not name:
+        error = "Name is required."
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        error = error or "Date must be valid (YYYY-MM-DD)."
+    try:
+        amount = float(amount_raw)
+        if amount < 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        amount = -1.0
+        error = error or "Amount must be a positive number."
+    if not provider:
+        error = error or (
+            "Choose which payment account was used (add them under Settings - Payment gateways)."
+        )
+    ext = ""
+    has_new_image = bool(image and image.filename)
+    if has_new_image:
+        ext = Path(image.filename).suffix.lower()
+        if ext not in UPLOAD_EXTS:
+            error = error or (
+                "Image must be one of: "
+                + ", ".join(e.lstrip(".").upper() for e in sorted(UPLOAD_EXTS)) + "."
+            )
+
+    values = {**target, "name": name, "date": day, "amount": amount_raw,
+              "client": client, "provider": provider}
+    if error:
+        flash(error, "error")
+        return render_form(values, conversation)
+
+    # ---- files: receipt + conversation follow the (possibly new) client ----
+    old_image = str(target.get("image") or "")
+    new_folder = client_folder(client)
+    filename = (
+        f"{txn_id}{ext}" if has_new_image
+        else (old_image.split("/")[-1] if old_image else "")
+    )
+    image_rel = old_image
+    if filename:
+        desired = f"{new_folder}/{filename}" if new_folder else filename
+        if has_new_image:
+            target_dir = upload_dir() / new_folder if new_folder else upload_dir()
+            target_dir.mkdir(parents=True, exist_ok=True)
+            image.save(target_dir / filename)
+            if old_image and old_image != desired:
+                old_path = data_path(old_image)
+                if old_path is not None:
+                    old_path.unlink(missing_ok=True)  # replaced image
+            image_rel = desired
+        elif desired != old_image and old_image:
+            src = data_path(old_image)
+            dst = upload_dir() / desired
+            if src is not None and src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    src.rename(dst)
+                    image_rel = desired
+                except OSError:  # locked elsewhere - keep the old location
+                    image_rel = old_image
+            else:
+                image_rel = desired  # file already gone; path still follows the folder
+
+    old_conv = str(target.get("conversation") or "")
+    conv_rel = ""
+    if conversation.strip():
+        conv_rel = f"{new_folder}/{txn_id}.txt" if new_folder else f"{txn_id}.txt"
+        conv_path = upload_dir() / conv_rel
+        conv_path.parent.mkdir(parents=True, exist_ok=True)
+        conv_path.write_text(conversation, encoding="utf-8")
+        if old_conv and old_conv != conv_rel:
+            old_path = data_path(old_conv)
+            if old_path is not None:
+                old_path.unlink(missing_ok=True)
+    elif old_conv:
+        old_path = data_path(old_conv)
+        if old_path is not None:
+            old_path.unlink(missing_ok=True)  # conversation cleared -> txt removed
+
+    target.update({
+        "name": name,
+        "date": day,
+        "amount": round(amount, 2),
+        "client": client,
+        "provider": provider,
+        "image": image_rel,
+        "conversation": conv_rel,
+    })
+    save_transactions(items)
+    flash(f"Updated {txn_id} - {name}: {amount:,.2f}.", "ok")
+    return redirect(url_for("transactions_page"))
+
+
+@app.get("/transactions/export")
+def transaction_export():
+    """Download the current transaction search (month/year/name) as CSV or XLSX."""
+    month, year, name_q = transaction_filters()
+    view = filter_transactions(load_transactions(), month, year, name_q)
+    if not view:
+        flash("No transactions to export for this filter.", "error")
+        return redirect(url_for("transactions_page", **request.args.to_dict()))
+
+    if year and month:
+        stamp = f"{year:04d}-{month:02d}"
+    elif year:
+        stamp = f"{year:04d}"
+    elif month:
+        stamp = f"month-{month:02d}"
+    else:
+        stamp = "all"
+    if name_q:
+        stamp += "_" + "".join(ch if ch.isalnum() else "_" for ch in name_q)[:30]
+    rows = txn_export_rows(view)
+
+    fmt = request.args.get("format", "csv")
+    if fmt == "xlsx":
+        payload = make_txn_xlsx(rows)
+        return send_file(
+            payload,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=f"transactions_{stamp}.xlsx",
+        )
+    payload = make_csv(rows, TXN_EXPORT_HEADERS)
+    return send_file(
+        payload, mimetype="text/csv", as_attachment=True,
+        download_name=f"transactions_{stamp}.csv",
     )
 
 
@@ -1255,7 +1500,59 @@ def settings_page():
         end_val=end_val,
         off_days=off_days,
         weekdays=WEEKDAYS,
+        gateways=load_gateways(),
     )
+
+
+@app.post("/settings/gateways")
+def gateway_add():
+    """Add a payment gateway (provider user) - the Transactions dropdown."""
+    name = (request.form.get("name") or "").strip()
+    items = load_gateways()
+    if not name:
+        flash("Gateway name is required.", "error")
+    elif any(str(g.get("name", "")).casefold() == name.casefold() for g in items):
+        flash(f"A payment gateway named '{name}' already exists.", "error")
+    else:
+        items.append({"id": next_gateway_id(items), "name": name})
+        save_gateways(items)
+        flash(f"Added payment gateway {name}.", "ok")
+    return redirect(url_for("settings_page"))
+
+
+@app.post("/settings/gateways/<gw_id>/edit")
+def gateway_edit(gw_id):
+    name = (request.form.get("name") or "").strip()
+    items = load_gateways()
+    target = next((g for g in items if g.get("id") == gw_id), None)
+    if target is None:
+        flash(f"Payment gateway {gw_id} not found.", "error")
+    elif not name:
+        flash("Gateway name is required.", "error")
+    elif any(g.get("id") != gw_id and str(g.get("name", "")).casefold() == name.casefold()
+             for g in items):
+        flash(f"A payment gateway named '{name}' already exists.", "error")
+    else:
+        target["name"] = name
+        save_gateways(items)
+        flash(f"Updated payment gateway to {name}.", "ok")
+    return redirect(url_for("settings_page"))
+
+
+@app.post("/settings/gateways/<gw_id>/delete")
+def gateway_delete(gw_id):
+    items = load_gateways()
+    target = next((g for g in items if g.get("id") == gw_id), None)
+    if target is None:
+        flash(f"Payment gateway {gw_id} not found.", "error")
+    else:
+        save_gateways([g for g in items if g.get("id") != gw_id])
+        flash(
+            f"Deleted payment gateway {target.get('name', gw_id)} - transactions already "
+            "saved keep it as recorded.",
+            "ok",
+        )
+    return redirect(url_for("settings_page"))
 
 
 if __name__ == "__main__":

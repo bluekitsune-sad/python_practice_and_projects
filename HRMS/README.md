@@ -63,32 +63,53 @@ flowchart LR
 | **Home** | Counts (employees, attendance, transactions) + quick start. |
 | **Employees** | Add employees (ID `emp_001`, `emp_002`... auto-generated). Department and designation are optional. **Edit** fixes the name / department / designation / join date (the ID never changes). `Mark ex` keeps the person out of active use but preserves all history; `Delete` removes the person **and** their attendance records (confirmation prompt). |
 | **Attendance** | Pick employee + date (defaults to today) and a **day type**: *Worked* (enter arrival time + hours; status is automatic - **Present** if you arrive by the office start, **Late** after it, including the early-morning hours up to the office end), *Approved leave*, or *Absent*. Re-opening a date that has data shows an orange warning and prefills it. |
-| **Transactions** | Save an **image/receipt + name + date + amount + client (optional) + conversation (optional)**. Search by **month + year** (see count, total amount and **how many people** transacted that month) or by **person for their complete history**. Delete removes the record, its image and its conversation file. |
+| **Transactions** | Save an **image/receipt + name + date + amount + client (optional) + conversation (optional) + payment account (required)**. **Edit** any record in place (fields, conversation, replace the image). Search by **month + year** (see count, total amount and **how many people** transacted that month) or by **person for their complete history**, then download the current search as **CSV or XLSX**. Delete removes the record, its image and its conversation file. |
 | **Calendar** | Month grid: every day cell shows that day's **total transactions (all names)** and **attendance %**; beside the month name sit the **month's attendance %** and **month total**. Prev/Next navigation, off days dashed, today highlighted. **Click any day** to open its detail page. |
 | **Day detail** | `/calendar/<date>` - that day's **complete attendance in a table** (ID, name, department, status badge, arrival, hours) with a **Transactions column** (count + amount per person) and a **Day total row** for all transactions. A **Status editing** button (top-right) lets you click any status to cycle it `Present → Late → Absent → Leave` **and type arrival / hours straight in the row** - saved instantly. Marking Present with no time = on time (start of shift). Prev-day / month / next-day links; off-day and future-date banners. |
 | **Totals** | Dashboard: KPI cards (all-time amount, this month, people, count), a **bar chart** of the last 12 months, a **donut** of top people by amount and the recent transactions. |
 | **Export** | Choose month + year, download the attendance CSV or XLSX. Opening this page also **saves** the auto-absents (see below). |
 | **Import** | Upload a correctly formatted `.json` file to bulk add/update employees and attendance. Nothing is ever deleted by an import. |
-| **Settings** | The **office timing** - start (`LATE_TIME`) and end (`OFFICE_END`, next morning) - plus the `OFF_DAYS` checkboxes. Saved to `data/config.json`, no file editing needed; invalid times are rejected. |
+| **Settings** | The **office timing** - start (`LATE_TIME`) and end (`OFFICE_END`, next morning) - plus the `OFF_DAYS` checkboxes. Saved to `data/config.json`, no file editing needed; invalid times are rejected. Also hosts **Payment gateways**: add / rename / delete the accounts that fill the transaction's required *Payment account* dropdown. |
 
 ## Transactions
 
 ```mermaid
 flowchart TD
-    F["Add form<br/>image + name + date + amount + client? + conversation?"] --> S["Files saved under<br/>data/uploads/&lt;client&gt;/<br/>(no client = the common uploads root)"]
+    G["Settings: payment gateways<br/>(add / edit / delete)"] --> P["Payment account dropdown *"]
+    F["Add form<br/>image + name + date + amount + client? + conversation? + payment account *"]
+    P --> F
+    F --> S["Files saved under<br/>data/uploads/&lt;client&gt;/<br/>(no client = the common uploads root)"]
     S --> IMG["txn_001.png<br/>(receipt image)"]
     S --> TXT["txn_001.txt<br/>(pasted conversation, downloadable)"]
     F --> R["Record saved in<br/>data/transactions.json"]
+    R --> E["Edit page: fields,<br/>conversation, replace image<br/>(files follow the client folder)"]
     R --> Q{"Search filters<br/>(month + year + name)"}
     Q --> M["Monthly view:<br/>count + total amount + people"]
     Q --> H["Individual complete history<br/>+ that person's total"]
+    Q --> X["Export current search<br/>CSV / XLSX"]
     R --> D["Totals dashboard:<br/>KPIs + bar chart + donut"]
 ```
 
 Rules:
 
-- **Image** is required; PNG / JPG / WEBP / GIF up to **8 MB**. The file is stored under a
-  server-generated name (`txn_001.png`), never the original filename.
+- **Payment account (required)**: every transaction records *which account the payment
+  came from*. It is a dropdown fed by the **payment gateways** you maintain on the
+  **Settings** page (add / rename / delete; one name per entry, e.g.
+  `PayPal - saad@company.com`). Saving without one is rejected - add a gateway first if the
+  list is empty. Deleting a gateway does not change transactions already saved (they keep
+  the name as recorded).
+- **Edit** any record with the **Edit** button: name, date, amount, client, payment
+  account and conversation; the image can be kept (leave empty) or replaced. Change the
+  **client** and the receipt + conversation files move into that client's folder.
+  Clearing the conversation box deletes its `.txt`.
+- **Export**: the **CSV** / **XLSX** buttons next to Search download the *current* search
+  (month + year + name, or everything when unfiltered) with columns `ID, Date, Name,
+  Client, Provider user, Amount, Image file, Conversation file`. Same Google-Sheets-safe
+  style as the attendance files (UTF-8 BOM CSV; plain-text dates, numeric amounts, frozen
+  header + filter in XLSX). Receipt images are not embedded - the file name points at
+  them. An empty search refuses with a message instead of an empty file.
+- **Image** is required when adding; PNG / JPG / WEBP / GIF up to **8 MB**. The file is
+  stored under a server-generated name (`txn_001.png`), never the original filename.
 - **Client folders** keep a client's files together: with a client name, the image and the
   conversation `.txt` are saved in `data/uploads/<client>/`; without one they go to the
   **common area** (`data/uploads/` root). The folder name is derived from the client name
@@ -220,6 +241,17 @@ All three live in `data/config.json` and are edited from the web on the **Settin
 Only marks saved **after** a settings change are judged by the new times; records already
 saved keep the status they had.
 
+### Payment gateways (Settings page)
+
+The Settings page also hosts a **Payment gateways** card - the source of the required
+*Payment account* dropdown on the Transactions page:
+
+- **Add** a name (e.g. `PayPal - saad@company.com`), **edit** it inline (Save per row) or
+  **delete** it (with confirmation). Empty and duplicate names are rejected.
+- Stored in `data/gateways.json` as `{"gateways": [{"id": "gw_001", "name": "..."}]}`.
+- Deleting a gateway only removes it from the dropdown; transactions already saved keep
+  the account name they were recorded with.
+
 ## Export files (tested against Google Sheets)
 
 - Columns: `Employee ID, Name, Department, Designation, Date, Status, Hours` - one row per
@@ -305,7 +337,7 @@ palette (bars in lime, current month in pale).
 python smoke_test.py
 ```
 
-136 end-to-end checks against a temporary data folder (your real data is not touched).
+157 end-to-end checks against a temporary data folder (your real data is not touched).
 
 ## Not included (on purpose)
 

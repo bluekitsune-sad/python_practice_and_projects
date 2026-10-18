@@ -20,8 +20,8 @@ HRMS/
   templates/        base.html (layout + theme CSS) + index/employees/employee_edit/
                     attendance/settings/transactions/calendar/day/dashboard/export/import
   data/             JSON source of truth: config.json, employees.json, attendance.json,
-                    transactions.json   +  data/uploads/ (transaction images + conversation
-                    .txt, grouped in per-client folders) - all local-only
+                    transactions.json, gateways.json  +  data/uploads/ (transaction images
+                    + conversation .txt, grouped in per-client folders) - all local-only
   snap/             app screenshots (1..7.PNG) embedded in README - UI only, never user data
   README.md         user-facing docs (incl. mermaid diagrams)  |  TODO.md: status + future
 ```
@@ -33,7 +33,8 @@ HRMS/
   data, or the next save would wipe user records. Shapes:
   `employees.json = {"employees": [...]}`,
   `attendance.json = {"records": {emp_id: {date: record}}}`,
-  `transactions.json = {"transactions": [{id, name, date, amount, client, image}]}`.
+  `transactions.json = {"transactions": [{id, name, date, amount, client, provider, image, conversation}]}`,
+  `gateways.json = {"gateways": [{id, name}]}`.
 - **Transaction IDs / images / conversation**: `txn_001` style via `next_transaction_id()`;
   images are stored under a server-generated name (`txn_001.png`), never the client's
   filename; whitelist `UPLOAD_EXTS`, cap 8 MB via `MAX_CONTENT_LENGTH`. Files live in a
@@ -49,12 +50,36 @@ HRMS/
   (`None` if they would escape uploads). Serving via `/uploads/<path:filename>` +
   `send_from_directory` only; the conversation downloads from
   `/transactions/<id>/conversation` (`transaction_conversation`, `as_attachment`).
+- **Transaction `provider` (required)**: every transaction stores `provider` - the payment
+  account used ("provider user"). The value comes from a **dropdown fed by the payment
+  gateways** and is validated as required (add + edit): `"Choose which payment account was
+  used..."`. Old records may lack the key - render `—` on lists, and never rewrite them
+  silently (the edit form offers a stale value as an extra, preselected option).
+- **Transaction edit** (`/transactions/<txn_id>/edit`, `transaction_edit`): edits
+  name / date / amount / client / provider / conversation in place; the image is optional
+  (leave empty to keep, upload to replace). Changing the client MOVES the receipt +
+  conversation `.txt` into the new client folder (`Path.rename`; a locked file keeps its
+  old path - the record must always point at a real file). Clearing the conversation
+  unlinks the `.txt`. Re-render the form (no redirect) on validation errors so typed
+  values survive (same convention as `employee_edit`).
+- **Transaction export** (`/transactions/export`, `transaction_export`): CSV or XLSX of the
+  CURRENT search (same `month`/`year`/`name` params as `/transactions`), fixed columns
+  `TXN_EXPORT_HEADERS`; CSV = utf-8-sig, XLSX = plain-text dates, numeric amount
+  (`#,##0.00`), attendance-style header/freeze/filter. Never embed images. Empty result ->
+  flash + redirect instead of an empty file.
+- **Payment gateways** (the provider dropdown): `data/gateways.json =
+  {"gateways": [{id, name}]}` (`gw_001` via `next_gateway_id()`), managed on the Settings
+  page through `POST /settings/gateways` (+ `/settings/gateways/<id>/edit` and `/delete`
+  routes). One free-text name per entry (e.g. `PayPal - saad@x`), case-insensitive
+  duplicate check. Deleting a gateway never touches saved transactions - the chosen name
+  stays on the record.
 - **Settings**: `LATE_TIME` (office start, default `22:00`), `OFFICE_END` (default `05:00`)
   and `OFF_DAYS` (default `["Saturday"]`, English weekday names) live in `data/config.json`,
   read via `load_config()`. Never hardcode them elsewhere. They are edited from the web on
   the **Settings** page (`/settings`, `settings_page`): times validated/normalised by
   `normalize_time()` (HH:MM, 00:00-23:59), off days built from the `WEEKDAYS` constant,
-  saved through `_save` so the file stays atomic and keeps any other keys.
+  saved through `_save` so the file stays atomic and keeps any other keys. The same page
+  hosts the **Payment gateways** card (add/edit/delete - own routes, see below).
 - **Employee edit**: `/employees/<id>/edit` (`employee_edit`) changes name / department /
   designation / `added_on` only - the `emp_001` id never changes. Re-render the form (no
   redirect) on validation errors so typed values survive; `Mark ex` / `Delete` stay on the
@@ -122,7 +147,7 @@ HRMS/
 
 ## Before finishing a change
 
-1. Run `python smoke_test.py` - must stay 136/136 (extend it when you add behaviour).
+1. Run `python smoke_test.py` - must stay 157/157 (extend it when you add behaviour).
 2. Check `http://127.0.0.1:5000` renders (python app.py, or start.bat on Windows).
 3. Update `README.md` and `TODO.md` so docs match reality.
 4. The JSON files are user data - never rewrite their schema without a migration note.

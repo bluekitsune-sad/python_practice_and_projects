@@ -244,9 +244,11 @@ def main() -> int:
     check("GET /transactions -> 200", resp.status_code == 200)
     png = b"\x89PNG\r\n\x1a\n" + b"fake-png-bytes" * 4
 
-    def add_txn(name, day, amount, client_name="", fname="receipt.png", conversation=""):
+    def add_txn(name, day, amount, client_name="", fname="receipt.png", conversation="",
+                provider="PayPal - main"):
         return client.post("/transactions", data={
             "name": name, "day": day, "amount": amount, "client": client_name,
+            "provider": provider,
             "conversation": conversation,
             "image": (io.BytesIO(png), fname),
         }, content_type="multipart/form-data", follow_redirects=True).data.decode("utf-8")
@@ -541,6 +543,132 @@ def main() -> int:
           and not (up / "Acme Corp" / "txn_005.txt").exists())
     check("legacy flat transactions keep working",
           client.get("/uploads/txn_001.png").status_code == 200)
+
+    # payment gateways (Settings CRUD -> provider dropdown) ----------------
+    out = client.post("/settings/gateways", data={"name": "PayPal - main"},
+                      follow_redirects=True).data.decode("utf-8")
+    gws = json.loads((tmp / "gateways.json").read_text("utf-8"))["gateways"]
+    check("add payment gateway",
+          "Added payment gateway" in out and len(gws) == 1
+          and gws[0]["name"] == "PayPal - main" and gws[0]["id"] == "gw_001", str(gws))
+    out = client.post("/settings/gateways", data={"name": "PayPal - main"},
+                      follow_redirects=True).data.decode("utf-8")
+    check("duplicate gateway rejected", "already exists" in out, out[:160])
+    out = client.post("/settings/gateways", data={"name": " "},
+                      follow_redirects=True).data.decode("utf-8")
+    check("empty gateway name rejected", "Gateway name is required" in out, out[:160])
+    gw_id = json.loads((tmp / "gateways.json").read_text("utf-8"))["gateways"][0]["id"]
+    out = client.post(f"/settings/gateways/{gw_id}/edit", data={"name": "PayPal - personal"},
+                      follow_redirects=True).data.decode("utf-8")
+    gws = json.loads((tmp / "gateways.json").read_text("utf-8"))["gateways"]
+    check("edit gateway name saved",
+          "Updated payment gateway" in out and gws[0]["name"] == "PayPal - personal", str(gws))
+    body = client.get("/settings").data.decode("utf-8")
+    check("settings lists gateway edit + delete forms",
+          f'action="/settings/gateways/{gw_id}/edit"' in body
+          and f'action="/settings/gateways/{gw_id}/delete"' in body, body[:0] or "forms missing")
+    body = client.get("/transactions").data.decode("utf-8")
+    check("provider dropdown filled from gateways",
+          'name="provider"' in body and '<option value="PayPal - personal">' in body)
+
+    # provider is required on add + edit -----------------------------------
+    before = len(json.loads((tmp / "transactions.json").read_text("utf-8"))["transactions"])
+    out = client.post("/transactions", data={
+        "name": "X", "day": "2026-10-17", "amount": "5", "client": "",
+        "image": (io.BytesIO(png), "r.png"),
+    }, content_type="multipart/form-data", follow_redirects=True).data.decode("utf-8")
+    after = len(json.loads((tmp / "transactions.json").read_text("utf-8"))["transactions"])
+    check("transaction without a payment account rejected",
+          "payment account" in out and after == before, out[:160])
+
+    # editing a record in place --------------------------------------------
+    body = client.get("/transactions/txn_004/edit").data.decode("utf-8")
+    check("edit form prefills the record",
+          "Edit transaction txn_004" in body and 'value="200' in body
+          and 'name="provider"' in body, body[:160])
+    out = client.post("/transactions/txn_004/edit", data={
+        "name": "Client A", "day": "2026-08-30", "amount": "250",
+        "client": "New Client", "provider": "PayPal - personal",
+        "conversation": "we agreed on 250",
+    }, content_type="multipart/form-data", follow_redirects=True).data.decode("utf-8")
+    check("edit saves fields + moves files into the client folder",
+          "Updated txn_004" in out
+          and (up / "New Client" / "txn_004.png").exists()
+          and (up / "New Client" / "txn_004.txt").exists()
+          and not (up / "txn_004.png").exists(),
+          str(sorted(str(p.relative_to(up)) for p in up.rglob("*"))))
+    txn4 = [t for t in json.loads((tmp / "transactions.json").read_text("utf-8"))["transactions"]
+            if t["id"] == "txn_004"][0]
+    check("edit stores provider + amount + client",
+          txn4.get("provider") == "PayPal - personal" and txn4["amount"] == 250
+          and txn4["client"] == "New Client", str(txn4))
+    out = client.post("/transactions/txn_004/edit", data={
+        "name": "Client A", "day": "2026-08-30", "amount": "250",
+    }, content_type="multipart/form-data", follow_redirects=True).data.decode("utf-8")
+    check("edit without a payment account rejected", "payment account" in out, out[:160])
+    resp = client.get("/transactions/txn_004/conversation")
+    ok = resp.status_code == 200 and b"we agreed on 250" in resp.data
+    resp.close()  # Windows keeps downloaded files locked until the response closes
+    check("edited conversation downloadable", ok)
+    out = client.post("/transactions/txn_004/edit", data={
+        "name": "Client A", "day": "2026-08-30", "amount": "250",
+        "client": "New Client", "provider": "PayPal - personal",
+        "conversation": "we agreed on 250",
+        "image": (io.BytesIO(png), "r2.jpg"),
+    }, content_type="multipart/form-data", follow_redirects=True).data.decode("utf-8")
+    check("edit replaces the image (new extension, old file gone)",
+          "Updated txn_004" in out
+          and (up / "New Client" / "txn_004.jpg").exists()
+          and not (up / "New Client" / "txn_004.png").exists(),
+          str(sorted(str(p.relative_to(up)) for p in up.rglob("*"))))
+    out = client.post("/transactions/txn_004/edit", data={
+        "name": "Client A", "day": "2026-08-30", "amount": "250",
+        "client": "New Client", "provider": "PayPal - personal", "conversation": "",
+    }, content_type="multipart/form-data", follow_redirects=True).data.decode("utf-8")
+    txn4 = [t for t in json.loads((tmp / "transactions.json").read_text("utf-8"))["transactions"]
+            if t["id"] == "txn_004"][0]
+    check("clearing the conversation removes the txt",
+          not (up / "New Client" / "txn_004.txt").exists()
+          and txn4.get("conversation") == "", str(txn4))
+
+    # transaction export (CSV / XLSX) --------------------------------------
+    resp = client.get("/transactions/export?month=10&year=2026&format=csv")
+    text = resp.data.decode("utf-8-sig")
+    lines = text.splitlines()
+    check("transaction CSV downloads (BOM + filename)",
+          resp.status_code == 200 and resp.data.startswith(b"\xef\xbb\xbf")
+          and "filename=transactions_2026-10.csv" in resp.headers.get("Content-Disposition", ""),
+          str(resp.headers.get("Content-Disposition")))
+    check("transaction CSV headers",
+          lines[0] == "ID,Date,Name,Client,Provider user,Amount,Image file,Conversation file",
+          lines[0])
+    check("transaction CSV rows follow the search (Oct = 4)",
+          len(lines) == 5 and "txn_001" in text and "1500.5" in text, str(len(lines)))
+    resp = client.get("/transactions/export?month=10&year=2026&format=xlsx")
+    wb3 = load_workbook(io.BytesIO(resp.data))
+    ws3 = wb3.active
+    check("transaction XLSX: sheet + headers + row count",
+          ws3.title == "Transactions"
+          and [c.value for c in ws3[1]] == [
+              "ID", "Date", "Name", "Client", "Provider user", "Amount",
+              "Image file", "Conversation file",
+          ]
+          and ws3.max_row == 5, f"{ws3.title} rows={ws3.max_row}")
+    date_cell = ws3.cell(row=2, column=2)
+    amount_cell = ws3.cell(row=2, column=6)
+    check("transaction XLSX: dates plain text, amount numeric",
+          isinstance(date_cell.value, str) and isinstance(amount_cell.value, (int, float)),
+          f"date={type(date_cell.value).__name__} amount={type(amount_cell.value).__name__}")
+    resp = client.get("/transactions/export?name=Client%20A&format=csv")
+    text = resp.data.decode("utf-8-sig")
+    check("export follows the name filter (Client A = 2 rows + filename)",
+          len(text.splitlines()) == 3
+          and "Client_A" in resp.headers.get("Content-Disposition", ""),
+          str(len(text.splitlines())))
+    resp = client.get("/transactions/export?month=9&year=2026&format=csv",
+                      follow_redirects=True)
+    check("empty export refused with a message",
+          "No transactions to export" in resp.data.decode("utf-8"))
 
     # report --------------------------------------------------------------
     failed = [r for r in results if not r[1]]

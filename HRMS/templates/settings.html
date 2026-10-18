@@ -59,4 +59,53 @@
     </p>
   </form>
 </div>
+
+<div class="card">
+  <h2>Payment gateways (provider users)</h2>
+  <p class="hint" style="margin-top:-6px">
+    These fill the required <b>Payment account</b> dropdown on the Transactions page -
+    the account each payment was made from. Deleting one keeps it on transactions
+    already saved.
+  </p>
+  <form method="post" action="{{ url_for('gateway_add') }}"
+        style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:14px">
+    <div style="flex:1; min-width:240px">
+      <label for="gw-name">New gateway / payment account</label>
+      <input type="text" id="gw-name" name="name" required
+             placeholder="e.g. PayPal - saad@company.com">
+    </div>
+    <button type="submit">Add gateway</button>
+  </form>
+
+  {% if gateways %}
+  <table style="margin-top:18px">
+    <thead>
+      <tr><th>ID</th><th>Name</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for g in gateways %}
+      <tr>
+        <td><code>{{ g.id }}</code></td>
+        <td>
+          <form method="post" action="{{ url_for('gateway_edit', gw_id=g.id) }}"
+                style="display:flex; gap:8px; align-items:center">
+            <input type="text" name="name" value="{{ g.name }}" required style="max-width:360px">
+            <button class="small" type="submit">Save</button>
+          </form>
+        </td>
+        <td style="text-align:right">
+          <form method="post" action="{{ url_for('gateway_delete', gw_id=g.id) }}"
+                onsubmit="return confirm('Delete payment gateway {{ g.name }}?\nTransactions already saved keep it as recorded.')">
+            <button class="small danger" type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint">No payment gateways yet - add your first one above, then pick it on every
+    transaction.</p>
+  {% endif %}
+</div>
 {% endblock %}

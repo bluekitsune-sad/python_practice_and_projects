@@ -25,6 +25,13 @@
         <input type="text" id="client" name="client" placeholder="e.g. Acme Corp">
       </div>
       <div>
+        <label for="provider">Payment account *</label>
+        <select id="provider" name="provider" required>
+          <option value="" disabled selected>{{ 'Select an account...' if gateways else 'Add one in Settings first' }}</option>
+          {% for g in gateways %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
         <label for="image">Image / receipt *</label>
         <input type="file" id="image" name="image" accept="image/*" required>
       </div>
@@ -37,9 +44,11 @@
       <textarea id="conversation" name="conversation" rows="4"
         placeholder="Paste the conversation between you and the client - it is saved as a .txt and can be downloaded from the list below."></textarea>
     </div>
-    <p class="hint">PNG, JPG, WEBP or GIF up to 8 MB. With a client name everything is saved in that
-      client's own folder <code>data/uploads/&lt;client&gt;/</code> (image + conversation .txt);
-      without one it goes to the common area <code>data/uploads/</code>.</p>
+    <p class="hint">PNG, JPG, WEBP or GIF up to 8 MB. The <b>payment account</b> is required -
+      manage the dropdown list under <b>Settings &rarr; Payment gateways</b>. With a client
+      name everything is saved in that client's own folder <code>data/uploads/&lt;client&gt;/</code>
+      (image + conversation .txt); without one it goes to the common area
+      <code>data/uploads/</code>.</p>
   </form>
 </div>
 
@@ -69,9 +78,13 @@
       <label for="name">Person (complete history)</label>
       <input type="text" id="name" name="name" value="{{ name_q }}" list="name-list" placeholder="type a name...">
     </div>
-    <div style="flex:0 0 auto; display:flex; gap:10px">
+    <div style="flex:0 0 auto; display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap">
       <button type="submit">Search</button>
-      <a class="btn ghost" href="{{ url_for('transactions_page') }}" style="padding:10px 20px">Clear</a>
+      <a class="btn ghost" href="{{ url_for('transactions_page') }}">Clear</a>
+      <a class="btn ghost" title="Export this search as CSV (Google Sheets friendly)"
+         href="{{ url_for('transaction_export', format='csv', month=month or '', year=year or '', name=name_q) }}">CSV</a>
+      <a class="btn ghost" title="Export this search as XLSX"
+         href="{{ url_for('transaction_export', format='xlsx', month=month or '', year=year or '', name=name_q) }}">XLSX</a>
     </div>
   </form>
 
@@ -88,7 +101,7 @@
   {% if transactions %}
   <table>
     <thead>
-      <tr><th>Image</th><th>Date</th><th>Name</th><th>Client</th><th>Amount</th><th>ID</th><th></th></tr>
+      <tr><th>Image</th><th>Date</th><th>Name</th><th>Client</th><th>Payment account</th><th>Amount</th><th>ID</th><th></th></tr>
     </thead>
     <tbody>
       {% for t in transactions %}
@@ -101,9 +114,12 @@
         <td>{{ t.date }}</td>
         <td>{{ t.name }}</td>
         <td>{{ t.client or '—' }}</td>
+        <td>{{ t.get('provider', '') or '—' }}</td>
         <td class="amount">{{ "{:,.2f}".format(t.amount) }}</td>
         <td class="muted">{{ t.id }}</td>
         <td style="text-align:right">
+          <a class="btn small ghost" style="margin-right:8px"
+             href="{{ url_for('transaction_edit', txn_id=t.id) }}">Edit</a>
           {% if t.get('conversation') %}
           <a class="btn small ghost" style="margin-right:8px"
              href="{{ url_for('transaction_conversation', txn_id=t.id) }}" title="Download the conversation (.txt)">TXT</a>

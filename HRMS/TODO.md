@@ -15,7 +15,10 @@
 - [x] Export by month + year: CSV and XLSX downloads (empty month = message, no empty file)
 - [x] Google Sheets friendly: UTF-8 BOM CSV; XLSX with plain YYYY-MM-DD text dates, styled header, colour-coded status (incl. blue Leave), frozen header + filter
 - [x] JSON file import: bulk add/update employees and attendance, skips + reports invalid entries
-- [x] **Transactions page**: image + name + date + amount + client (optional) + **conversation** (optional, pasted chat saved as a downloadable `.txt`); files grouped in a **per-client folder** `data/uploads/<client>/` (no client = common area at the uploads root); PNG/JPG/WEBP/GIF, max 8 MB, server-generated names
+- [x] **Transactions page**: image + name + date + amount + client (optional) + **conversation** (optional, pasted chat saved as a downloadable `.txt`) + **payment account (required)**; files grouped in a **per-client folder** `data/uploads/<client>/` (no client = common area at the uploads root); PNG/JPG/WEBP/GIF, max 8 MB, server-generated names
+- [x] Transaction **edit** (`Edit` button): change fields + conversation in place, replace the image (optional), files move when the client changes; invalid input re-renders the form with typed values
+- [x] **Payment gateways** in Settings: add / edit / delete the accounts behind the required *Payment account* dropdown (`data/gateways.json`, `gw_001` ids); deleting one keeps it on old transactions
+- [x] Transaction **export**: **CSV / XLSX** of the current search (month + year + name), Google-Sheets-safe (BOM CSV, plain-text dates, numeric amounts), columns incl. Provider user + file names; empty search refuses with a message
 - [x] Transaction **search**: month + year filter with summary cards (transactions / total amount / **people count**) and **complete per-person history** (name filter, case-insensitive), delete removes record + image
 - [x] **Totals dashboard**: KPI cards (all-time amount, this month, people, count), last-12-months bar chart, top-people donut (SVG), recent transactions, empty state
 - [x] **Theme**: dark-green direction applied to every page (palette `#9FDC56` / `#EAFFD2` / `#FF7366` / `#545FFF` / `#161815`, pill nav, "HRMS" brand, Neue Montreal fallback)
@@ -24,13 +27,13 @@
 - [x] **Status editing from the day table**: top-right toggle turns the badges into click-to-cycle (`Present -> Late -> Absent -> Leave`, unmarked `-` becomes `Present`), saved instantly via `POST /api/attendance/status` (no page reload)
 - [x] **Quick time edits in the day table**: with editing ON you can also **type arrival / hours straight in the row** (`POST /api/attendance/field`) - a typed time re-derives the status from the office window; **marked Present with no time = on time** (arrival snaps to the shift start)
 - [x] `start.bat` - double-click to run the app in a shell window
-- [x] `smoke_test.py` - 136 end-to-end checks, all passing (incl. uploads, traversal guard, dashboard KPIs, calendar math, edit/settings/day detail, night-shift status, status cycling, inline time edits, conversation .txt, client folders)
+- [x] `smoke_test.py` - 157 end-to-end checks, all passing (incl. uploads, traversal guard, dashboard KPIs, calendar math, edit/settings/day detail, night-shift status, status cycling, inline time edits, conversation .txt, client folders, gateways CRUD, provider validation, transaction edit + export)
 - [x] Docs: `README.md` (user guide **with mermaid diagrams** + **screenshots from `snap/`**), `AGENTS.md` (agents), this file
 
 ## Later / if wanted (not built yet - do not build without asking)
 
-- [ ] Transactions: CSV/XLSX export of a month (like attendance), edit-in-place instead of
-      delete + re-add, multiple images per record, currency symbol/setting
+- [ ] Transactions: multiple images per record, currency symbol/setting, grouping the
+      list by client / payment account
 - [ ] **Full-detail attendance record**: fields `check_in`, `check_out`, `note` added to each
       record next to `arrival` / `hours` / `status`; extra export columns appear only when
       requested. (Planned per user, storage already easy to extend.)
